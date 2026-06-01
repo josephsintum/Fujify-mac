@@ -60,6 +60,13 @@ final class Pipeline {
         item.thumbnail = await Thumbnail.generate(for: item.url)
     }
 
+    /// Removes the files with the given ids from the queue. Files currently
+    /// being processed remain in their in-flight Task (the batch holds its
+    /// own captured snapshot) but disappear from the visible list.
+    func remove(_ ids: Set<FileItem.ID>) {
+        files.removeAll { ids.contains($0.id) }
+    }
+
     // MARK: Processing
 
     /// Kicks off the batch. No-op if already processing or if exiftool isn't

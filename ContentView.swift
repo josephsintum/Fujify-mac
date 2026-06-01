@@ -4,6 +4,7 @@ import AppKit
 struct ContentView: View {
     @State private var pipeline = Pipeline(toolLocator: ToolLocator())
     @State private var isDropTargeted = false
+    @State private var selection: Set<FileItem.ID> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -73,7 +74,7 @@ struct ContentView: View {
     }
 
     private var fileTable: some View {
-        Table(pipeline.files) {
+        Table(pipeline.files, selection: $selection) {
             TableColumn("") { (item: FileItem) in
                 ThumbnailCell(image: item.thumbnail)
             }
@@ -91,6 +92,31 @@ struct ContentView: View {
             TableColumn("Status") { (item: FileItem) in
                 StatusBadge(status: item.status)
             }
+        }
+        .contextMenu(forSelectionType: FileItem.ID.self) { ids in
+            let urls = pipeline.files
+                .filter { ids.contains($0.id) }
+                .map(\.url)
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting(urls)
+            }
+            .disabled(urls.isEmpty)
+            Button("Open with Default App") {
+                for url in urls {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            .disabled(urls.isEmpty)
+            Divider()
+            Button("Remove from List") {
+                pipeline.remove(ids)
+                selection.subtract(ids)
+            }
+            .disabled(ids.isEmpty)
+        }
+        .onDeleteCommand {
+            pipeline.remove(selection)
+            selection.removeAll()
         }
     }
 
