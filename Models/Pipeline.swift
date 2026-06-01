@@ -110,20 +110,32 @@ final class Pipeline {
 
     // MARK: Internals
 
-    /// Resolves the DNG to inject metadata into. For `.dng` input the file
-    /// is returned as-is. For other RAW formats, dispatches to the active
-    /// converter; the produced DNG sits next to the source (output folder
-    /// support is step 7).
+    /// Resolves the DNG to inject metadata into.
+    ///
+    /// - For `.dng` input with no output folder: returns the source — the
+    ///   exiftool step modifies it in place.
+    /// - For `.dng` input with an output folder: copies the DNG into that
+    ///   folder first so the source stays untouched.
+    /// - For other RAW formats: dispatches to the active converter, which
+    ///   produces a DNG either alongside the source (no output folder) or
+    ///   inside the chosen output folder.
     private func prepareDng(
         _ item: FileItem,
         converter: ResolvedConverter
     ) async throws -> URL {
         let src = item.url
-        if src.pathExtension.lowercased() == "dng" {
-            return src
-        }
+        let outputDir = outputFolder ?? src.deletingLastPathComponent()
+        let stem = src.deletingPathExtension().lastPathComponent
+        let dst = outputDir.appendingPathComponent(stem + ".dng")
 
-        let dst = src.deletingPathExtension().appendingPathExtension("dng")
+        if src.pathExtension.lowercased() == "dng" {
+            if dst.standardizedFileURL == src.standardizedFileURL {
+                return src
+            }
+            try? FileManager.default.removeItem(at: dst)
+            try FileManager.default.copyItem(at: src, to: dst)
+            return dst
+        }
 
         switch converter {
         case .dngOnly:
@@ -135,7 +147,6 @@ final class Pipeline {
             try await DngLab(executable: executable)
                 .convert(src: src, dst: dst, embedRaw: embedRaw)
         }
-
         return dst
     }
 
