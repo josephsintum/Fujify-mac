@@ -82,6 +82,15 @@ final class Pipeline {
                 } catch is CancellationError {
                     item.status = .pending
                     break
+                } catch DngLabError.unsupportedCamera(let model) {
+                    item.status = .skipped(
+                        reason: "Unsupported camera (\(model)). " +
+                            "Try Adobe DNG Converter or pre-convert with Lightroom Classic."
+                    )
+                } catch PipelineError.dngOnlyMode {
+                    item.status = .skipped(
+                        reason: "DNG-only mode — pre-convert with Lightroom Classic first."
+                    )
                 } catch {
                     item.status = .error(error.localizedDescription)
                 }
@@ -101,23 +110,33 @@ final class Pipeline {
 
     // MARK: Internals
 
-    /// Resolves the DNG to inject metadata into. For .dng input the file is
-    /// returned as-is. For other RAW formats we'd hand off to the active
-    /// converter — those wrappers don't exist yet (step 8 of the plan), so
-    /// for now non-DNG paths throw.
+    /// Resolves the DNG to inject metadata into. For `.dng` input the file
+    /// is returned as-is. For other RAW formats, dispatches to the active
+    /// converter; the produced DNG sits next to the source (output folder
+    /// support is step 7).
     private func prepareDng(
         _ item: FileItem,
         converter: ResolvedConverter
     ) async throws -> URL {
-        if item.url.pathExtension.lowercased() == "dng" {
-            return item.url
+        let src = item.url
+        if src.pathExtension.lowercased() == "dng" {
+            return src
         }
+
+        let dst = src.deletingPathExtension().appendingPathExtension("dng")
+
         switch converter {
         case .dngOnly:
             throw PipelineError.dngOnlyMode
-        case .adobe, .dnglab:
-            throw PipelineError.converterNotImplemented
+        case .adobe(let executable):
+            try await AdobeDngConverter(executable: executable)
+                .convert(src: src, dst: dst, embedRaw: embedRaw)
+        case .dnglab(let executable):
+            try await DngLab(executable: executable)
+                .convert(src: src, dst: dst, embedRaw: embedRaw)
         }
+
+        return dst
     }
 
     private func populateCameraInfo(_ item: FileItem) async {
@@ -157,14 +176,11 @@ final class Pipeline {
 
 enum PipelineError: Error, LocalizedError {
     case dngOnlyMode
-    case converterNotImplemented
 
     var errorDescription: String? {
         switch self {
         case .dngOnlyMode:
             return "DNG-only mode — pre-convert with Lightroom Classic first"
-        case .converterNotImplemented:
-            return "RAW converter not yet wired up"
         }
     }
 }
