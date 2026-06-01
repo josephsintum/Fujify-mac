@@ -1,0 +1,29 @@
+name: Fujify
+options:
+  bundleIdPrefix: dev.josephsintum
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+targets:
+  Fujify:
+    type: application
+    platform: macOS
+    sources:
+      - FujifyApp.swift
+      - ContentView.swift
+      - path: Engine
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.josephsintum.fujify
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Fujify
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Joseph Sintum. Original Fujify © 2024 Isidore Paulin. GPL v3."

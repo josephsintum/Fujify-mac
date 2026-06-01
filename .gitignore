@@ -363,6 +363,9 @@ MigrationBackup/
 FodyWeavers.xsd
 
 ## Xcode / Swift (Mac app)
+# Generated from project.yml via `xcodegen generate` — not committed.
+Fujify.xcodeproj/
+
 # Build artifacts
 build/
 DerivedData/
