@@ -52,7 +52,12 @@ final class Pipeline {
             let item = FileItem(url: url)
             files.append(item)
             Task { await populateCameraInfo(item) }
+            Task { await populateThumbnail(item) }
         }
+    }
+
+    private func populateThumbnail(_ item: FileItem) async {
+        item.thumbnail = await Thumbnail.generate(for: item.url)
     }
 
     // MARK: Processing

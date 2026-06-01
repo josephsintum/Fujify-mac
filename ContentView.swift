@@ -74,6 +74,10 @@ struct ContentView: View {
 
     private var fileTable: some View {
         Table(pipeline.files) {
+            TableColumn("") { (item: FileItem) in
+                ThumbnailCell(image: item.thumbnail)
+            }
+            .width(min: 56, ideal: 56, max: 56)
             TableColumn("Filename") { (item: FileItem) in
                 Text(item.url.lastPathComponent)
                     .lineLimit(1)
@@ -238,6 +242,31 @@ struct ContentView: View {
         return [make, item.model]
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+}
+
+struct ThumbnailCell: View {
+    let image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.medium)
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(.quaternary)
+                    .overlay {
+                        Image(systemName: "photo")
+                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 14))
+                    }
+            }
+        }
+        .frame(width: 40, height: 40)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }
 
