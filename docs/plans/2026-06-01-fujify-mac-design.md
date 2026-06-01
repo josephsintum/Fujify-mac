@@ -24,27 +24,25 @@ Fujify/
 ├── README.md
 ├── LICENSE
 ├── .gitignore                       # covers Xcode/Swift artifacts
-└── Fujify/                          # SwiftUI app (created by Xcode)
-    ├── Fujify.xcodeproj
-    └── Fujify/
-        ├── FujifyApp.swift          # @main entry
-        ├── ContentView.swift        # main window
-        ├── Models/
-        │   ├── FileItem.swift       # @Observable per-file state
-        │   └── Pipeline.swift       # batch orchestrator
-        ├── Engine/
-        │   ├── Subprocess.swift     # shared Process helper
-        │   ├── ExifTool.swift       # exiftool wrapper
-        │   ├── DngLab.swift         # dnglab wrapper
-        │   ├── AdobeDngConverter.swift  # Adobe DNG Converter wrapper
-        │   ├── ToolLocator.swift    # discover installed converters
-        │   └── Thumbnail.swift      # QuickLook-backed thumbnails
-        ├── Views/
-        │   ├── FileRow.swift
-        │   ├── DropZone.swift
-        │   ├── SettingsView.swift
-        │   └── ToolSetupSheet.swift # first-launch tool picker
-        └── Assets.xcassets
+├── Fujify.xcodeproj
+├── FujifyApp.swift          # @main entry
+├── ContentView.swift        # main window
+├── Models/
+│   ├── FileItem.swift       # @Observable per-file state
+│   └── Pipeline.swift       # batch orchestrator
+├── Engine/
+│   ├── Subprocess.swift     # shared Process helper
+│   ├── ExifTool.swift       # exiftool wrapper
+│   ├── DngLab.swift         # dnglab wrapper
+│   ├── AdobeDngConverter.swift  # Adobe DNG Converter wrapper
+│   ├── ToolLocator.swift    # discover installed converters
+│   └── Thumbnail.swift      # QuickLook-backed thumbnails
+├── Views/
+│   ├── FileRow.swift
+│   ├── DropZone.swift
+│   ├── SettingsView.swift
+│   └── ToolSetupSheet.swift # first-launch tool picker
+└── Assets.xcassets
 ```
 
 **Target:** macOS 14 (Sonoma) — modern SwiftUI (`@Observable`, `.dropDestination`, `.inspector`). Tested machine runs macOS 26.
