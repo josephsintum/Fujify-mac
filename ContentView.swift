@@ -3,6 +3,7 @@ import AppKit
 
 struct ContentView: View {
     @State private var pipeline = Pipeline(toolLocator: ToolLocator())
+    @State private var isDropTargeted = false
 
     var body: some View {
         Group {
@@ -13,6 +14,18 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 460)
+        .dropDestination(for: URL.self) { urls, _ in
+            Task { await pipeline.add(urls) }
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .padding(6)
+                    .allowsHitTesting(false)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -131,6 +144,7 @@ struct StatusBadge: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
+        .help(label)
     }
 
     private var icon: String {
