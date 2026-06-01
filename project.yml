@@ -13,6 +13,7 @@ targets:
       - FujifyApp.swift
       - ContentView.swift
       - path: Engine
+      - path: Models
     settings:
       base:
         SWIFT_VERSION: "5.9"
