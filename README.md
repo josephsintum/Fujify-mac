@@ -4,6 +4,8 @@ A macOS app that unlocks Fujifilm film simulation profiles in Adobe Lightroom fo
 
 <img src="Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="128" alt="Fujify icon">
 
+> Most of this repository was written with the help of [Claude](https://www.anthropic.com/claude) (Anthropic's AI assistant) in an extended pair-programming session: the Swift code, the design doc under [`docs/plans/`](docs/plans/), the build tooling, and this README. The original concept, the metadata trick, and the Windows implementation are entirely [Isidore Paulin's](https://github.com/ip-web) work.
+
 ## How it works
 
 The clever bit, courtesy of the original Fujify: Adobe Lightroom gates the Fujifilm simulation profiles (Provia, Velvia, Astia, Classic Chrome, Acros, Eterna, Nostalgic Neg., etc.) on the DNG's camera metadata. Rewrite a few `CameraProfile*` tags to identify the file as a Fujifilm X-T5, and Lightroom's profile picker exposes every Fuji simulation profile for the shot — even though it was taken on a Sony, Canon, or Nikon body.
