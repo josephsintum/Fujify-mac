@@ -8,15 +8,22 @@ final class Pipeline {
     var files: [FileItem] = []
     var isProcessing: Bool = false
     var outputFolder: URL?
-    var embedRaw: Bool = false
+    var embedRaw: Bool {
+        didSet {
+            UserDefaults.standard.set(embedRaw, forKey: Self.embedRawKey)
+        }
+    }
 
     let toolLocator: ToolLocator
+
+    private static let embedRawKey = "embedRaw"
 
     /// The task running the current batch, retained so cancel() can abort it.
     private var currentTask: Task<Void, Never>?
 
     init(toolLocator: ToolLocator) {
         self.toolLocator = toolLocator
+        self.embedRaw = UserDefaults.standard.bool(forKey: Self.embedRawKey)
     }
 
     var completedCount: Int {

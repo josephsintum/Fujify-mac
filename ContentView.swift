@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 
 struct ContentView: View {
-    @State private var pipeline = Pipeline(toolLocator: ToolLocator())
+    @Environment(Pipeline.self) private var pipeline
     @State private var isDropTargeted = false
     @State private var selection: Set<FileItem.ID> = []
+    @State private var showInspector = false
     @AppStorage("hasSeenToolSetup") private var hasSeenToolSetup: Bool = false
     @Binding var showToolSetup: Bool
 
@@ -50,6 +51,19 @@ struct ContentView: View {
                 }
                 .disabled(!canProcess)
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showInspector.toggle()
+                } label: {
+                    Label("Inspector", systemImage: "sidebar.right")
+                }
+                .keyboardShortcut("i", modifiers: .command)
+                .help("Show file metadata")
+            }
+        }
+        .inspector(isPresented: $showInspector) {
+            InspectorView(item: selectedItem)
+                .inspectorColumnWidth(min: 260, ideal: 320, max: 480)
         }
         .navigationTitle("Fujify")
         .sheet(isPresented: $showToolSetup) {
@@ -186,6 +200,13 @@ struct ContentView: View {
     }
 
     // MARK: Derived state
+
+    /// The file to show in the Inspector. Single-selection only; if 0 or 2+
+    /// are selected the inspector shows a hint instead of partial info.
+    private var selectedItem: FileItem? {
+        guard selection.count == 1, let id = selection.first else { return nil }
+        return pipeline.files.first { $0.id == id }
+    }
 
     private var pendingCount: Int {
         pipeline.files.filter { $0.status.isPending }.count
