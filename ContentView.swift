@@ -5,6 +5,8 @@ struct ContentView: View {
     @State private var pipeline = Pipeline(toolLocator: ToolLocator())
     @State private var isDropTargeted = false
     @State private var selection: Set<FileItem.ID> = []
+    @AppStorage("hasSeenToolSetup") private var hasSeenToolSetup: Bool = false
+    @Binding var showToolSetup: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,6 +52,14 @@ struct ContentView: View {
             }
         }
         .navigationTitle("Fujify")
+        .sheet(isPresented: $showToolSetup) {
+            ToolSetupSheet(toolLocator: pipeline.toolLocator)
+        }
+        .task {
+            if !hasSeenToolSetup, pipeline.toolLocator.activeConverter == .dngOnly {
+                showToolSetup = true
+            }
+        }
     }
 
     // MARK: Subviews
@@ -347,5 +357,5 @@ struct StatusBadge: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(showToolSetup: .constant(false))
 }
