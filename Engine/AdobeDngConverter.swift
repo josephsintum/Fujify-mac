@@ -10,8 +10,9 @@ import Foundation
 struct AdobeDngConverter {
     let executable: URL
 
-    static let defaultPath = URL(fileURLWithPath:
-        "/Applications/Adobe DNG Converter.app/Contents/MacOS/Adobe DNG Converter"
+    static let defaultPath = URL(
+        fileURLWithPath:
+            "/Applications/Adobe DNG Converter.app/Contents/MacOS/Adobe DNG Converter"
     )
 
     /// Converts `src` to a DNG at `dst`.
@@ -46,8 +47,13 @@ struct AdobeDngConverter {
             )
         }
         if actual != dst {
-            try? FileManager.default.removeItem(at: dst)
-            try FileManager.default.moveItem(at: actual, to: dst)
+            if FileManager.default.fileExists(atPath: dst.path) {
+                // Atomic on APFS — only replaces dst once `actual` is in
+                // place, so a failure here can't lose the previous file.
+                _ = try FileManager.default.replaceItemAt(dst, withItemAt: actual)
+            } else {
+                try FileManager.default.moveItem(at: actual, to: dst)
+            }
         }
     }
 }

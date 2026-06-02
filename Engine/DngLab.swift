@@ -55,9 +55,8 @@ enum DngLabError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedCamera(let model):
-            return "Unsupported camera (\(model)). " +
-                "Try Adobe DNG Converter for newer bodies, " +
-                "or pre-convert with Lightroom Classic."
+            return "Unsupported camera (\(model)). " + "Try Adobe DNG Converter for newer bodies, "
+                + "or pre-convert with Lightroom Classic."
         case .conversionFailed(let stderr):
             let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             return "dnglab failed: \(trimmed.isEmpty ? "unknown error" : trimmed)"

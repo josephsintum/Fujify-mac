@@ -20,7 +20,7 @@ final class Pipeline {
     }
 
     var completedCount: Int {
-        files.lazy.filter { if case .done = $0.status { true } else { false } }.count
+        files.lazy.filter { $0.status.isDone }.count
     }
 
     /// All supported RAW + DNG extensions (matches the Windows app and CLI).
@@ -29,6 +29,11 @@ final class Pipeline {
         "dcr", "iiq", "mos", "mef", "mrw", "nef", "nrw", "orf", "rw2",
         "pef", "srw", "arw", "srf", "sr2", "ari",
     ]
+
+    /// Cap on how many camera-info / thumbnail tasks run at once. Each
+    /// spawns a subprocess (exiftool) and/or QuickLook work — letting
+    /// thousands fan out at once would thrash CPU and FDs.
+    private static let populateConcurrency = 8
 
     // MARK: Adding files
 
@@ -44,20 +49,18 @@ final class Pipeline {
             collectSupportedFiles(at: url, into: &collected)
         }
 
-        let filtered = collected
+        let filtered =
+            collected
             .filter { !existing.contains($0) }
             .filter { dngOnly ? $0.pathExtension.lowercased() == "dng" : true }
 
-        for url in filtered {
+        let newItems = filtered.map { url -> FileItem in
             let item = FileItem(url: url)
             files.append(item)
-            Task { await populateCameraInfo(item) }
-            Task { await populateThumbnail(item) }
+            return item
         }
-    }
 
-    private func populateThumbnail(_ item: FileItem) async {
-        item.thumbnail = await Thumbnail.generate(for: item.url)
+        Task { [weak self] in await self?.populateMetadata(for: newItems) }
     }
 
     /// Removes the files with the given ids from the queue. Files currently
@@ -74,12 +77,12 @@ final class Pipeline {
     func process() {
         guard !isProcessing else { return }
         guard let exiftoolURL = toolLocator.exiftool else { return }
-        guard files.contains(where: { $0.status == .pending }) else { return }
+        guard files.contains(where: { $0.status.isPending }) else { return }
 
         isProcessing = true
         let exif = ExifTool(executable: exiftoolURL)
         let resolved = toolLocator.activeConverter
-        let pendingItems = files.filter { $0.status == .pending }
+        let pendingItems = files.filter { $0.status.isPending }
 
         currentTask = Task { @MainActor [weak self] in
             for item in pendingItems {
@@ -96,8 +99,8 @@ final class Pipeline {
                     break
                 } catch DngLabError.unsupportedCamera(let model) {
                     item.status = .skipped(
-                        reason: "Unsupported camera (\(model)). " +
-                            "Try Adobe DNG Converter or pre-convert with Lightroom Classic."
+                        reason: "Unsupported camera (\(model)). "
+                            + "Try Adobe DNG Converter or pre-convert with Lightroom Classic."
                     )
                 } catch PipelineError.dngOnlyMode {
                     item.status = .skipped(
@@ -112,10 +115,8 @@ final class Pipeline {
         }
     }
 
-    /// Cancels the current batch. The in-flight file (if any) reverts to
-    /// .pending so the next process() picks it up. TODO: also terminate the
-    /// currently-running subprocess — requires exposing Process from
-    /// runSubprocess, deferred until the UI Cancel button needs it.
+    /// Cancels the current batch. Subprocess gets SIGTERM via Subprocess's
+    /// cancellation handler; the in-flight file reverts to .pending.
     func cancel() {
         currentTask?.cancel()
     }
@@ -127,7 +128,7 @@ final class Pipeline {
     /// - For `.dng` input with no output folder: returns the source — the
     ///   exiftool step modifies it in place.
     /// - For `.dng` input with an output folder: copies the DNG into that
-    ///   folder first so the source stays untouched.
+    ///   folder atomically so the source stays untouched.
     /// - For other RAW formats: dispatches to the active converter, which
     ///   produces a DNG either alongside the source (no output folder) or
     ///   inside the chosen output folder.
@@ -144,8 +145,7 @@ final class Pipeline {
             if dst.standardizedFileURL == src.standardizedFileURL {
                 return src
             }
-            try? FileManager.default.removeItem(at: dst)
-            try FileManager.default.copyItem(at: src, to: dst)
+            try atomicallyCopy(from: src, to: dst)
             return dst
         }
 
@@ -162,28 +162,57 @@ final class Pipeline {
         return dst
     }
 
+    /// Runs camera-info + thumbnail population across the given items with
+    /// bounded concurrency. We use a sliding window so adding 10k files at
+    /// once doesn't spawn 20k concurrent tasks against exiftool/QuickLook.
+    /// Strong self is fine — Pipeline lives for the app's lifetime.
+    private func populateMetadata(for items: [FileItem]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for (index, item) in items.enumerated() {
+                if index >= Self.populateConcurrency {
+                    await group.next()
+                }
+                group.addTask {
+                    await self.populateCameraInfo(item)
+                    await self.populateThumbnail(item)
+                }
+            }
+        }
+    }
+
     private func populateCameraInfo(_ item: FileItem) async {
         guard let exiftoolURL = toolLocator.exiftool else { return }
         let exif = ExifTool(executable: exiftoolURL)
-        if let (make, model) = try? await exif.readMakeModel(item.url) {
-            item.make = make
-            item.model = model
-        }
+        guard let (make, model) = try? await exif.readMakeModel(item.url) else { return }
+        // The item may have been removed mid-populate; don't write to it.
+        guard files.contains(where: { $0.id == item.id }) else { return }
+        item.make = make
+        item.model = model
+    }
+
+    private func populateThumbnail(_ item: FileItem) async {
+        let thumbnail = await Thumbnail.generate(for: item.url)
+        guard files.contains(where: { $0.id == item.id }) else { return }
+        item.thumbnail = thumbnail
     }
 
     private func collectSupportedFiles(at url: URL, into result: inout [URL]) {
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(
-            atPath: url.path,
-            isDirectory: &isDirectory
-        ) else { return }
+        guard
+            FileManager.default.fileExists(
+                atPath: url.path,
+                isDirectory: &isDirectory
+            )
+        else { return }
 
         if isDirectory.boolValue {
-            guard let walker = FileManager.default.enumerator(
-                at: url,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) else { return }
+            guard
+                let walker = FileManager.default.enumerator(
+                    at: url,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                )
+            else { return }
             for case let child as URL in walker where isSupported(child) {
                 result.append(child)
             }
@@ -205,5 +234,24 @@ enum PipelineError: Error, LocalizedError {
         case .dngOnlyMode:
             return "DNG-only mode — pre-convert with Lightroom Classic first"
         }
+    }
+}
+
+/// Copies `src` to `dst` such that an existing file at `dst` is only
+/// replaced after the copy fully completes. Uses a sibling temp file so a
+/// failed copy can't leave the user's destination missing.
+func atomicallyCopy(from src: URL, to dst: URL) throws {
+    let tempName = "." + UUID().uuidString + "." + dst.lastPathComponent
+    let temp = dst.deletingLastPathComponent().appendingPathComponent(tempName)
+    try FileManager.default.copyItem(at: src, to: temp)
+    do {
+        if FileManager.default.fileExists(atPath: dst.path) {
+            _ = try FileManager.default.replaceItemAt(dst, withItemAt: temp)
+        } else {
+            try FileManager.default.moveItem(at: temp, to: dst)
+        }
+    } catch {
+        try? FileManager.default.removeItem(at: temp)
+        throw error
     }
 }

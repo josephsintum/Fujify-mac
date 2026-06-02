@@ -40,16 +40,18 @@ struct ExifTool {
     /// (typically "Error copying hidden data") that would otherwise cause
     /// exiftool to refuse the write entirely. Discovered during CLI testing.
     func injectFujiMetadata(dng: URL) async throws {
-        let result = try await runSubprocess(executable, [
-            "-CameraProfilesMake=FUJIFILM",
-            "-CameraProfilesModel=X-T5",
-            "-CameraProfilesUniqueCameraModel=Fujifilm X-T5",
-            "-CameraProfilesCameraRawProfile=True",
-            "-UniqueCameraModel=Fujifilm X-T5",
-            "-overwrite_original",
-            "-m",
-            dng.path,
-        ])
+        let result = try await runSubprocess(
+            executable,
+            [
+                "-CameraProfilesMake=FUJIFILM",
+                "-CameraProfilesModel=X-T5",
+                "-CameraProfilesUniqueCameraModel=Fujifilm X-T5",
+                "-CameraProfilesCameraRawProfile=True",
+                "-UniqueCameraModel=Fujifilm X-T5",
+                "-overwrite_original",
+                "-m",
+                dng.path,
+            ])
         guard result.didSucceed else {
             throw ExifToolError.failed(stderr: result.stderr)
         }

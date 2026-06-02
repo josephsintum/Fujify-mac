@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 import Observation
 
 @Observable @MainActor
@@ -22,6 +22,12 @@ final class FileItem: Identifiable, Hashable {
         case done
         case error(String)
         case skipped(reason: String)
+
+        var isPending: Bool { if case .pending = self { true } else { false } }
+        var isProcessing: Bool { if case .processing = self { true } else { false } }
+        var isDone: Bool { if case .done = self { true } else { false } }
+        var isError: Bool { if case .error = self { true } else { false } }
+        var isSkipped: Bool { if case .skipped = self { true } else { false } }
     }
 
     nonisolated static func == (lhs: FileItem, rhs: FileItem) -> Bool {

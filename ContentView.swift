@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct ContentView: View {
     @State private var pipeline = Pipeline(toolLocator: ToolLocator())
@@ -20,7 +20,9 @@ struct ContentView: View {
         .dropDestination(for: URL.self) { urls, _ in
             Task { await pipeline.add(urls) }
             return true
-        } isTargeted: { isDropTargeted = $0 }
+        } isTargeted: {
+            isDropTargeted = $0
+        }
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 10)
@@ -176,19 +178,19 @@ struct ContentView: View {
     // MARK: Derived state
 
     private var pendingCount: Int {
-        pipeline.files.filter { $0.status == .pending }.count
+        pipeline.files.filter { $0.status.isPending }.count
     }
 
     private var doneCount: Int {
-        pipeline.files.filter { if case .done = $0.status { true } else { false } }.count
+        pipeline.files.filter { $0.status.isDone }.count
     }
 
     private var skippedCount: Int {
-        pipeline.files.filter { if case .skipped = $0.status { true } else { false } }.count
+        pipeline.files.filter { $0.status.isSkipped }.count
     }
 
     private var errorCount: Int {
-        pipeline.files.filter { if case .error = $0.status { true } else { false } }.count
+        pipeline.files.filter { $0.status.isError }.count
     }
 
     private var canProcess: Bool {
@@ -223,7 +225,8 @@ struct ContentView: View {
         if skippedCount > 0 { parts.append("\(skippedCount) skipped") }
         if errorCount > 0 { parts.append("\(errorCount) error\(errorCount == 1 ? "" : "s")") }
         if pendingCount > 0 { parts.append("\(pendingCount) pending") }
-        return parts.isEmpty ? "\(total) file\(total == 1 ? "" : "s")" : parts.joined(separator: " · ")
+        return parts.isEmpty
+            ? "\(total) file\(total == 1 ? "" : "s")" : parts.joined(separator: " · ")
     }
 
     // MARK: Actions

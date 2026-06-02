@@ -24,9 +24,13 @@ enum SubprocessError: Error, LocalizedError {
 
 /// Runs a subprocess to completion, capturing stdout and stderr.
 ///
-/// Both pipes are drained on background tasks so the child can never block
-/// waiting for buffer space (the classic "small subprocess hangs forever
-/// because we forgot to read its output" trap).
+/// - Both pipes are drained on background tasks so the child can never block
+///   waiting for buffer space.
+/// - The parent's write-ends of the pipes are closed immediately after
+///   spawn — so if the child fails to exec or exits without writing, the
+///   reads still see EOF and we don't deadlock.
+/// - Honors `Task` cancellation by sending SIGTERM to the child. The pipe
+///   readers then hit EOF and the await unblocks naturally.
 func runSubprocess(_ tool: URL, _ arguments: [String]) async throws -> ProcessResult {
     guard FileManager.default.fileExists(atPath: tool.path) else {
         throw SubprocessError.toolNotFound(tool)
@@ -47,19 +51,29 @@ func runSubprocess(_ tool: URL, _ arguments: [String]) async throws -> ProcessRe
         throw SubprocessError.launchFailed(error.localizedDescription)
     }
 
-    async let stdoutData = Task.detached(priority: .utility) {
-        (try? stdoutPipe.fileHandleForReading.readToEnd()) ?? Data()
-    }.value
-    async let stderrData = Task.detached(priority: .utility) {
-        (try? stderrPipe.fileHandleForReading.readToEnd()) ?? Data()
-    }.value
+    // The parent doesn't write to these pipes. Closing the write ends here
+    // means the reader sees EOF when the child exits — even if the child
+    // exec'd then crashed without writing anything.
+    try? stdoutPipe.fileHandleForWriting.close()
+    try? stderrPipe.fileHandleForWriting.close()
 
-    let (out, err) = await (stdoutData, stderrData)
-    process.waitUntilExit()
+    return await withTaskCancellationHandler {
+        async let stdoutData = Task.detached(priority: .utility) {
+            (try? stdoutPipe.fileHandleForReading.readToEnd()) ?? Data()
+        }.value
+        async let stderrData = Task.detached(priority: .utility) {
+            (try? stderrPipe.fileHandleForReading.readToEnd()) ?? Data()
+        }.value
 
-    return ProcessResult(
-        exitCode: process.terminationStatus,
-        stdout: String(data: out, encoding: .utf8) ?? "",
-        stderr: String(data: err, encoding: .utf8) ?? ""
-    )
+        let (out, err) = await (stdoutData, stderrData)
+        process.waitUntilExit()
+
+        return ProcessResult(
+            exitCode: process.terminationStatus,
+            stdout: String(data: out, encoding: .utf8) ?? "",
+            stderr: String(data: err, encoding: .utf8) ?? ""
+        )
+    } onCancel: {
+        process.terminate()
+    }
 }
