@@ -24,13 +24,16 @@ enum SubprocessError: Error, LocalizedError {
 
 /// Runs a subprocess to completion, capturing stdout and stderr.
 ///
-/// - Both pipes are drained on background tasks so the child can never block
-///   waiting for buffer space.
-/// - The parent's write-ends of the pipes are closed immediately after
-///   spawn — so if the child fails to exec or exits without writing, the
-///   reads still see EOF and we don't deadlock.
-/// - Honors `Task` cancellation by sending SIGTERM to the child. The pipe
-///   readers then hit EOF and the await unblocks naturally.
+/// Cancellable: if the surrounding Task is cancelled (e.g., the user hits
+/// the Stop button) we SIGTERM the child, which causes its pipes to close,
+/// our pipe drainers to return, the termination handler to fire, and the
+/// outer await to unwind with a `CancellationError`. The caller's
+/// `catch is CancellationError` handler is then expected to revert state.
+///
+/// Pipe draining runs on detached Tasks so a chatty child can't block on a
+/// full pipe buffer, and `process.waitUntilExit()` is replaced by
+/// `Process.terminationHandler` + a continuation so we never synchronously
+/// block the actor we're called from.
 func runSubprocess(_ tool: URL, _ arguments: [String]) async throws -> ProcessResult {
     guard FileManager.default.fileExists(atPath: tool.path) else {
         throw SubprocessError.toolNotFound(tool)
@@ -45,19 +48,7 @@ func runSubprocess(_ tool: URL, _ arguments: [String]) async throws -> ProcessRe
     process.standardOutput = stdoutPipe
     process.standardError = stderrPipe
 
-    do {
-        try process.run()
-    } catch {
-        throw SubprocessError.launchFailed(error.localizedDescription)
-    }
-
-    // The parent doesn't write to these pipes. Closing the write ends here
-    // means the reader sees EOF when the child exits — even if the child
-    // exec'd then crashed without writing anything.
-    try? stdoutPipe.fileHandleForWriting.close()
-    try? stderrPipe.fileHandleForWriting.close()
-
-    return await withTaskCancellationHandler {
+    return try await withTaskCancellationHandler {
         async let stdoutData = Task.detached(priority: .utility) {
             (try? stdoutPipe.fileHandleForReading.readToEnd()) ?? Data()
         }.value
@@ -65,15 +56,51 @@ func runSubprocess(_ tool: URL, _ arguments: [String]) async throws -> ProcessRe
             (try? stderrPipe.fileHandleForReading.readToEnd()) ?? Data()
         }.value
 
+        let exitCode: Int32
+        do {
+            exitCode = try await withCheckedThrowingContinuation {
+                (cont: CheckedContinuation<Int32, Error>) in
+                process.terminationHandler = { proc in
+                    cont.resume(returning: proc.terminationStatus)
+                }
+                do {
+                    try Task.checkCancellation()
+                    try process.run()
+                } catch {
+                    // Couldn't launch (or task was cancelled before we
+                    // could). Close our copy of the pipe write ends so the
+                    // drainers see EOF and the outer awaits unwind.
+                    process.terminationHandler = nil
+                    try? stdoutPipe.fileHandleForWriting.close()
+                    try? stderrPipe.fileHandleForWriting.close()
+                    if error is CancellationError {
+                        cont.resume(throwing: CancellationError())
+                    } else {
+                        cont.resume(
+                            throwing: SubprocessError.launchFailed(error.localizedDescription)
+                        )
+                    }
+                }
+            }
+        } catch {
+            // Make sure the detached drainers finish before bubbling up,
+            // otherwise their file descriptors leak briefly.
+            _ = await (stdoutData, stderrData)
+            throw error
+        }
+
         let (out, err) = await (stdoutData, stderrData)
-        process.waitUntilExit()
+        try Task.checkCancellation()
 
         return ProcessResult(
-            exitCode: process.terminationStatus,
+            exitCode: exitCode,
             stdout: String(data: out, encoding: .utf8) ?? "",
             stderr: String(data: err, encoding: .utf8) ?? ""
         )
     } onCancel: {
+        // Synchronous; must not block. SIGTERM the child. It dies, closes
+        // its pipes, drainers return, terminationHandler fires, the await
+        // above unwinds. Task.checkCancellation() then throws.
         process.terminate()
     }
 }
