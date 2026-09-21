@@ -32,6 +32,25 @@ final class Pipeline {
         }
     }
 
+    /// Where new batches save by default. `outputFolder` starts here each
+    /// launch; changing it for one batch does not change the default.
+    var defaultOutputFolder: URL? {
+        didSet {
+            UserDefaults.standard.set(
+                defaultOutputFolder?.path, forKey: Self.defaultOutputFolderKey)
+        }
+    }
+
+    /// Notify when a batch finishes and Fujify isn't the active app.
+    var notifyOnFinish: Bool {
+        didSet { UserDefaults.standard.set(notifyOnFinish, forKey: Self.notifyKey) }
+    }
+
+    /// Reveal the output folder in Finder when a batch finishes.
+    var revealOnFinish: Bool {
+        didSet { UserDefaults.standard.set(revealOnFinish, forKey: Self.revealKey) }
+    }
+
     let toolLocator: ToolLocator
 
     private(set) var batchStartedAt: Date?
@@ -43,6 +62,9 @@ final class Pipeline {
     private static let embedRawKey = "embedRaw"
     private static let skipAlreadyTaggedKey = "skipAlreadyTagged"
     private static let confirmInPlaceKey = "confirmInPlaceDng"
+    private static let defaultOutputFolderKey = "defaultOutputFolder"
+    private static let notifyKey = "notifyOnFinish"
+    private static let revealKey = "revealOnFinish"
 
     init(toolLocator: ToolLocator, defaults: UserDefaults = .standard) {
         self.toolLocator = toolLocator
@@ -52,6 +74,13 @@ final class Pipeline {
             defaults.object(forKey: Self.skipAlreadyTaggedKey) as? Bool ?? true
         self.confirmInPlaceDng =
             defaults.object(forKey: Self.confirmInPlaceKey) as? Bool ?? true
+        self.notifyOnFinish = defaults.object(forKey: Self.notifyKey) as? Bool ?? true
+        self.revealOnFinish = defaults.bool(forKey: Self.revealKey)
+
+        let savedFolder = defaults.string(forKey: Self.defaultOutputFolderKey)
+            .map { URL(fileURLWithPath: $0) }
+        self.defaultOutputFolder = savedFolder
+        self.outputFolder = savedFolder
     }
 
     /// All supported RAW + DNG extensions. Locked to the contract (§5.1) by
@@ -231,10 +260,23 @@ final class Pipeline {
                 guard !Task.isCancelled, let self else { break }
                 await self.processOne(item, target: target, converter: resolved, exif: exif)
             }
-            self?.isProcessing = false
-            self?.batchFinishedAt = Date()
-            self?.currentTask = nil
+            guard let self else { return }
+            self.isProcessing = false
+            self.batchFinishedAt = Date()
+            self.currentTask = nil
+            self.announceBatchFinished()
         }
+    }
+
+    private func announceBatchFinished() {
+        let counts = counts
+        BatchNotifier.batchFinished(
+            done: counts.done,
+            skipped: counts.skipped,
+            failed: counts.failed,
+            notify: notifyOnFinish,
+            revealFolder: revealOnFinish && counts.done > 0 ? outputFolder : nil
+        )
     }
 
     /// Cancels the current batch. The running child process gets SIGTERM via
