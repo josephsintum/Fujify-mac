@@ -295,20 +295,60 @@ struct ContentView: View {
         }
     }
 
+    /// Right-click on a row.
+    ///
+    /// Process Again and Retry are both always present, with one of them
+    /// disabled, so the menu keeps its shape and muscle memory survives
+    /// between a finished file and a failed one.
     @ViewBuilder
     private func contextMenu(for ids: Set<FileItem.ID>) -> some View {
         let items = pipeline.files.filter { ids.contains($0.id) }
-        let urls = items.map(\.url)
+        let sourceURLs = items.map(\.url)
+        let outputURLs = items.compactMap(\.outputURL)
+        let count = items.count
 
-        Button("Show in Finder") {
-            NSWorkspace.shared.activateFileViewerSelecting(urls)
+        Button(plural("Show in Finder", count)) {
+            NSWorkspace.shared.activateFileViewerSelecting(sourceURLs)
         }
-        .disabled(urls.isEmpty)
+        .disabled(sourceURLs.isEmpty)
 
-        Button("Open with Default App") {
-            for url in urls { NSWorkspace.shared.open(url) }
+        Button(plural("Show Output DNG in Finder", outputURLs.count)) {
+            NSWorkspace.shared.activateFileViewerSelecting(outputURLs)
         }
-        .disabled(urls.isEmpty)
+        .disabled(outputURLs.isEmpty)
+
+        // Hidden rather than disabled when Lightroom is absent: a permanently
+        // greyed item is just clutter.
+        if Lightroom.isInstalled {
+            Button(plural("Open in Lightroom", count)) {
+                // The output once there is one, so the user sees the tagged
+                // file rather than the untouched source.
+                for item in items { Lightroom.open(item.inspectionURL) }
+            }
+            .disabled(items.isEmpty)
+        }
+
+        Button(plural("Open with Default App", count)) {
+            for url in sourceURLs { NSWorkspace.shared.open(url) }
+        }
+        .disabled(sourceURLs.isEmpty)
+
+        Divider()
+
+        Button("Inspect") {
+            selection = ids
+            showInspector = true
+        }
+        .keyboardShortcut("i", modifiers: .command)
+        .disabled(ids.count != 1)
+
+        Button(plural("Copy Path", count)) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(
+                items.map(\.inspectionURL.path).joined(separator: "\n"), forType: .string)
+        }
+        .keyboardShortcut("c", modifiers: [.command, .option])
+        .disabled(items.isEmpty)
 
         Divider()
 
@@ -320,15 +360,22 @@ struct ContentView: View {
 
         Divider()
 
-        Button(removeTitle(count: ids.count)) {
+        Button(count > 1 ? "Remove \(count) from List" : "Remove from List") {
             pipeline.remove(ids)
             selection.subtract(ids)
         }
         .disabled(ids.isEmpty)
     }
 
-    private func removeTitle(count: Int) -> String {
-        count > 1 ? "Remove \(count) from List" : "Remove from List"
+    /// "Show in Finder" for one, "Show 3 in Finder" for several — matching
+    /// how macOS menus pluralise.
+    private func plural(_ title: String, _ count: Int) -> String {
+        guard count > 1 else { return title }
+        if let range = title.range(of: " in ") ?? title.range(of: " with ") {
+            return title.replacingCharacters(
+                in: range.lowerBound..<range.lowerBound, with: " \(count)")
+        }
+        return "\(title) (\(count))"
     }
 
     // MARK: Banner
