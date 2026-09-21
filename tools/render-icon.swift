@@ -20,8 +20,13 @@
 // square fills 92% and the mark scales up to match.
 //
 // Below 48px the wordmark is unreadable at any weight, so those sizes drop to
-// an "f" monogram. The accent stripe survives down to 24 and is dropped at 20
-// and below, where it would be a smear.
+// an "f" monogram. The stripe stays at every size: a lone white "f" on a green
+// rounded square is a well-known social icon with the hue changed, and the
+// three colours are the only thing that tells them apart at 16px. What made
+// the stripe unusable down there was never the size but the arithmetic --
+// three segments across a width that is not a multiple of three land on
+// fractional pixels and blend into one muddy line. Snapping the segment width
+// to whole pixels first, then centring the band, keeps each colour crisp.
 //
 
 import AppKit
@@ -70,13 +75,20 @@ struct Platform {
 }
 
 let textVerticalCenterFraction: CGFloat = 0.46  // slightly above center
+/// Monogram cap height as a fraction of the canvas.
+let monogramFraction: CGFloat = 0.50
 let stripeHeightFraction: CGFloat = 0.045
 let stripeYFraction: CGFloat = 0.70  // from top, of canvas
 
 /// Below this the wordmark cannot be read, so the monogram is used instead.
 let monogramBelow: CGFloat = 48
-/// Below this even the stripe is noise.
-let dropStripeBelow: CGFloat = 24
+
+/// Monogram stripe geometry, all relative to the rounded square rather than
+/// the canvas so the band never rides out over the corner radius.
+let monogramSegmentFraction: CGFloat = 0.235
+let monogramStripeInset: CGFloat = 0.19
+/// A one-pixel band disappears at 16px, so it never goes below two.
+let monogramStripeMinHeight: CGFloat = 2
 
 // MARK: - Renderer
 
@@ -128,18 +140,25 @@ func renderIcon(size: CGFloat, platform: Platform) -> NSBitmapImageRep {
     ctx.fillPath()
 
     let useMonogram = size < monogramBelow
+
+    // Drawn before the mark so the monogram can be centred in what is left
+    // above it rather than in the square, which would have it sit on the band.
+    let stripeTop = drawStripe(
+        in: size,
+        platform: platform,
+        isMonogram: useMonogram,
+        squareRect: squareRect,
+        ctx: ctx
+    )
+
     drawText(
         useMonogram ? "f" : "fujify",
         in: size,
         platform: platform,
-        isMonogram: useMonogram
+        isMonogram: useMonogram,
+        squareRect: squareRect,
+        stripeTop: stripeTop
     )
-
-    // The monogram is centred when it stands alone, so the stripe would
-    // collide with it; at 24–32 the glyph sits higher to leave room.
-    if !useMonogram || size >= dropStripeBelow {
-        drawStripe(in: size, platform: platform, isMonogram: useMonogram, ctx: ctx)
-    }
 
     return bitmap
 }
@@ -148,12 +167,14 @@ private func drawText(
     _ text: String,
     in size: CGFloat,
     platform: Platform,
-    isMonogram: Bool
+    isMonogram: Bool,
+    squareRect: CGRect,
+    stripeTop: CGFloat
 ) {
     // A single letter can be much larger than the wordmark in the same box.
     let fontSize =
         isMonogram
-        ? size * (size >= dropStripeBelow ? 0.50 : 0.56)
+        ? size * monogramFraction
         : size * platform.wordmarkFraction
 
     let font = NSFont.systemFont(ofSize: fontSize, weight: .heavy)
@@ -166,33 +187,48 @@ private func drawText(
     let string = text as NSString
     let textSize = string.size(withAttributes: attributes)
 
-    // A lone monogram centres in the square; with a stripe below it, it
-    // lifts to match where the wordmark sits.
-    let centerFromTop: CGFloat =
-        isMonogram
-        ? (size >= dropStripeBelow ? 0.44 : 0.50)
-        : textVerticalCenterFraction
-
     let originX = (size - textSize.width) / 2
-    let centerFromBottom = size * (1 - centerFromTop)
-    let originY = centerFromBottom - textSize.height / 2
+    // The monogram centres in the room the stripe leaves it; the wordmark
+    // keeps its own fixed position, which the stripe was drawn to suit.
+    let originY =
+        isMonogram
+        ? (stripeTop + squareRect.maxY) / 2 - textSize.height / 2
+        : size * (1 - textVerticalCenterFraction) - textSize.height / 2
 
     string.draw(at: NSPoint(x: originX, y: originY), withAttributes: attributes)
 }
 
+/// Draws the three-colour accent band and returns its top edge, so the
+/// monogram can be placed in the space above it.
+@discardableResult
 private func drawStripe(
     in size: CGFloat,
     platform: Platform,
     isMonogram: Bool,
+    squareRect: CGRect,
     ctx: CGContext
-) {
-    let totalWidth = size * (isMonogram ? 0.52 : platform.stripeWidthFraction)
-    // A 1px stripe disappears, so it never goes below a full pixel.
-    let height = max(size * stripeHeightFraction, 1).rounded()
-    let originX = ((size - totalWidth) / 2).rounded()
-    let yFromTop = size * (isMonogram ? 0.76 : stripeYFraction)
-    let originY = (size - yFromTop - height).rounded()
-    let segmentWidth = totalWidth / CGFloat(stripeColors.count)
+) -> CGFloat {
+    let segmentWidth: CGFloat
+    let originX: CGFloat
+    let height: CGFloat
+    let originY: CGFloat
+
+    if isMonogram {
+        // Whole-pixel segments, then centre: the reverse order would put the
+        // colour boundaries back on fractions and undo the point of it.
+        segmentWidth = max((squareRect.width * monogramSegmentFraction).rounded(), 1)
+        let totalWidth = segmentWidth * CGFloat(stripeColors.count)
+        originX = (squareRect.midX - totalWidth / 2).rounded()
+        height = max((size * 0.07).rounded(), monogramStripeMinHeight)
+        originY = (squareRect.minY + squareRect.height * monogramStripeInset).rounded()
+    } else {
+        let totalWidth = size * platform.stripeWidthFraction
+        segmentWidth = totalWidth / CGFloat(stripeColors.count)
+        originX = ((size - totalWidth) / 2).rounded()
+        // A 1px stripe disappears, so it never goes below a full pixel.
+        height = max(size * stripeHeightFraction, 1).rounded()
+        originY = (size - size * stripeYFraction - height).rounded()
+    }
 
     for (index, color) in stripeColors.enumerated() {
         ctx.setFillColor(color.cgColor)
@@ -204,6 +240,8 @@ private func drawStripe(
                 height: height
             ))
     }
+
+    return originY + height
 }
 
 func savePNG(bitmap: NSBitmapImageRep, to url: URL) throws {

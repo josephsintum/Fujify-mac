@@ -97,10 +97,13 @@ Sticky notes on each row record the rationale and OS mappings.
   "fujify" wordmark in the system heavy weight, the three-simulation
   stripe. Only the container changes. Mac stays as shipped (squircle inset
   10%, radius 22.5%) with one proposed change: 16 and 32 px switch to an
-  "f" monogram, stripe kept at 32 and dropped at 16. Windows fills 92% of
+  "f" monogram, with the stripe at every size. Windows fills 92% of
   the canvas with an 18% radius because Windows adds no shadow or mask.
   One .ico with 256, 48, 32, 24, 20, 16: wordmark at 256 and 48, monogram
-  with stripe at 32 and 24, monogram alone at 20 and 16.
+  with stripe below that. Revised 2026-09-21: the stripe was originally to
+  be dropped at 20 and below, which left a lone white "f" on a green rounded
+  square -- a well-known social icon with the hue changed. The stripe is now
+  kept at every size; see the note under the implementation status.
 - **RAW files are never changed; DNGs in place are a deliberate choice.**
   RAW input always produces a new DNG. A DNG dropped in with Save to set
   to In place has its tags rewritten in the original file, so when Process
@@ -202,6 +205,15 @@ installed.
   re-tag rather than recording the Fujifilm identity written last time.
 - The bundled ExifTool and dnglab do the full job from inside the app
   bundle, with no Homebrew copy present.
+- **The 16px icon no longer impersonates a social network (2026-09-21).**
+  Dropping the stripe below 24px left a bare white "f" on a green rounded
+  square. The stripe was dropped because three colour segments across a
+  width that is not a multiple of three land on fractional pixels and blend
+  into one muddy line -- the arithmetic, not the size. Snapping the segment
+  width to whole pixels before centring the band fixes it, so the stripe now
+  survives to 16px on both platforms. It also repaired 32px, whose colours
+  had been washed out by the same blending. Only the three monogram renders
+  changed; every wordmark size is byte-identical to what shipped.
 - **The X100VI target works in Lightroom (2026-09-21).** Ten Sony A7 V
   (`ILCE-7M5`) ARWs converted with the X100VI target list Reala Ace v2 in
   the profile browser. This closes the open `uniqueCameraModel` question
@@ -218,9 +230,6 @@ installed.
   cannot run there. The code handles it by running every candidate and
   discarding what fails, but that path has not been exercised on real
   hardware.
-- **Icon at small sizes.** The white "f" on a green rounded square reads a
-  little like a well-known social icon at 16px, where the differentiating
-  stripe is dropped. Worth a second opinion.
 
 ### Deferred by decision
 
