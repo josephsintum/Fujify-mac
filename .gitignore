@@ -400,3 +400,6 @@ fixtures/
 ## Bundled third-party tools — fetched by tools/fetch-tools.sh, never committed
 Vendor/exiftool/
 Vendor/dnglab
+
+## Generated icon exports
+build/

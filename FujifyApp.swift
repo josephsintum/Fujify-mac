@@ -28,6 +28,7 @@ struct FujifyApp: App {
                 }
         }
         .windowResizability(.contentMinSize)
+        .commands { AboutCommands() }
 
         Settings {
             SettingsView()
