@@ -169,6 +169,7 @@ struct InspectorView: View {
         "CameraProfilesMake",
         "CameraProfilesModel",
         "CameraProfilesUniqueCameraModel",
+        "CameraProfilesCameraRawProfile",
         "UniqueCameraModel",
     ]
 
