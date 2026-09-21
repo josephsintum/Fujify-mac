@@ -45,12 +45,15 @@ field changes.
 
 Built-in targets:
 
-| Display name        | make       | model        | uniqueCameraModel     | Note shown in the picker |
-|---------------------|------------|--------------|-----------------------|--------------------------|
-| Fujifilm X-T5       | `FUJIFILM` | `X-T5`       | `Fujifilm X-T5`       | Nostalgic Neg., Classic Neg., Eterna Bleach Bypass and the classics |
-| Fujifilm X100VI     | `FUJIFILM` | `X100VI`     | `Fujifilm X100VI`     | Adds Reala Ace |
-| Fujifilm X-T50      | `FUJIFILM` | `X-T50`      | `Fujifilm X-T50`      | Adds Reala Ace |
-| Fujifilm GFX100 II  | `FUJIFILM` | `GFX100 II`  | `Fujifilm GFX100 II`  | Adds Reala Ace, medium-format profiles |
+| Display name    | make       | model    | uniqueCameraModel | Note shown in the picker |
+|-----------------|------------|----------|-------------------|--------------------------|
+| Fujifilm X-T5   | `FUJIFILM` | `X-T5`   | `Fujifilm X-T5`   | Nostalgic Neg., Classic Neg., Eterna Bleach Bypass and the classics |
+| Fujifilm X100VI | `FUJIFILM` | `X100VI` | `Fujifilm X100VI` | Adds Reala Ace |
+
+Two entries, deliberately not a catalogue: the X-T5 for the classic
+simulations and the X100VI for Reala Ace. Anything else the user adds
+themselves, which also means the app never ships a model string nobody has
+checked.
 
 The X-T5 is the default target and the fallback whenever a selected target
 disappears.
@@ -101,7 +104,7 @@ kept for the user.
 
 The same invocation also records what the file used to be, so a future
 "Remove Fujify tags" action can put it back. This uses a custom XMP
-namespace defined in `Tools/exiftool-fujify.config`, passed with `-config`
+namespace defined in `Vendor/exiftool-fujify.config`, passed with `-config`
 on every read and write:
 
 ```
@@ -199,7 +202,15 @@ Check this pattern before checking the exit code, because dnglab may exit
 non-zero for the same reason.
 
 Version 0.8.0 is bundled. Coverage is broad but lags on newer bodies; the
-Sony A7 V is the current example.
+Sony A7 V is the current example, and the Nikon D1H is a small fixture that
+reproduces the message above.
+
+**dnglab publishes no x86_64 build for macOS**, only arm64. The bundled copy
+therefore cannot run on an Intel Mac. Rather than special-casing the
+architecture, every tool candidate is verified by running it and reading back
+a version string; one that cannot execute is discarded and the app falls back
+to a Homebrew copy or to Adobe DNG Converter. That check also catches a
+damaged or quarantined binary.
 
 ### 4.3 DNG-only mode
 
@@ -344,12 +355,27 @@ A failure is structured, not a string:
 | `cause` | see the table below |
 | `toolOutput` | the tool's raw stderr, shown collapsed and copyable |
 
-| Cause | Detected by | Actions offered |
+| Cause | Detected by (case-insensitive) | Actions offered |
 |---|---|---|
-| `readOnlyOutput` | stderr contains `permission denied` or `Read-only file system` | Retry, Choose Folder, Show in Finder |
-| `diskFull` | stderr contains `No space left` | Retry, Choose Folder, Show in Finder |
-| `toolMissing` | the executable was not found | open Settings › Converter |
+| `readOnlyOutput` | `permission denied`, `error creating file`, `read-only file system`, `access is denied`, `operation not permitted`, `os error 13` | Retry, Choose Folder, Show in Finder |
+| `diskFull` | `no space left`, `disk full`, `not enough space`, `os error 28` | Retry, Choose Folder, Show in Finder |
+| `toolMissing` | `not found at`, or `no such file or directory` naming the tool | open Settings › Converter |
 | `other` | anything else | Retry, Show in Finder |
+
+**`error creating file` is not optional.** exiftool reports a permissions
+problem as
+
+```
+Error: Error creating file: <path>_exiftool_tmp - <path>
+```
+
+with no mention of permissions anywhere. Matching only on `permission denied`
+files it under "unknown error", and the user never gets the Choose Folder
+button that would fix it. dnglab, by contrast, says
+`I/O error: Permission denied (os error 13)`.
+
+Both strings are captured verbatim in
+`Tests/FailureClassificationTests.swift`.
 
 Cause detection lives in exactly one function so both platforms and the unit
 tests agree.
