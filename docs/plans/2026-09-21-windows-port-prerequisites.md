@@ -1,7 +1,9 @@
 # Windows Port — Prerequisites
 
 **Date:** 2026-09-21
-**Status:** Checklist, not started
+**Status:** Sections 1-5 are done on the macOS side; see the
+implementation status in 2026-09-21-design-first.md. What remains is
+Windows-specific: the environment, the repo split, and the decisions in §8.
 **Scope:** Everything that must be true *before* the first line of C# is written.
 The port itself (WPF app, installer, signing) is out of scope here.
 

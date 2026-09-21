@@ -1,7 +1,8 @@
 # Design-first phase — plan
 
 **Date:** 2026-09-21
-**Status:** In progress. No code until the design is signed off.
+**Status:** Design signed off; the macOS implementation is complete.
+See "Implementation status" at the end.
 **Decision:** Design and UX for both platforms are drafted and agreed on a
 shared canvas *before* any Swift or C# is written. Implementation planning
 (contract doc, fixtures, Windows port) resumes afterwards, using
@@ -169,3 +170,58 @@ implementation plan.
   radius 18%, monogram below 48 px) and a monogram branch for the Mac 16
   and 32 px sizes; pack the Windows PNGs into `fujify.ico` with
   ImageMagick.
+
+
+---
+
+## Implementation status (2026-09-21)
+
+The macOS app now matches the design. Seven stages, each its own commit,
+from tag `mac-v1.0`:
+
+| Stage | What landed |
+|---|---|
+| 0 | `docs/PIPELINE-CONTRACT.md`, fixtures, `tools/verify-dng.sh`, test target |
+| 1 | Target cameras, bundled ExifTool + dnglab, structured failures, tag stash |
+| 2 | Skip rule, in-place count, retry/reprocess, live queue, partial-output cleanup |
+| 3 | Toolbar, status filter, empty state, in-place confirmation, Add Camera |
+| 4 | Inspector Result card, highlighted tags, Open in Lightroom |
+| 5 | Context menu, drag-over overlay, multi-select |
+| 6 | Three-tab Settings, batch notifications |
+| 7 | Small-size icon monogram, Windows icon profile, About box, README |
+
+48 Swift Testing cases pass. A clean clone builds and runs with nothing
+installed.
+
+### Verified
+
+- Every fixture converts and passes `tools/verify-dng.sh`, including the
+  Nikon D1H that dnglab rejects and Adobe DNG Converter handles.
+- A DNG tagged for the X-T5 is skipped for the X-T5 and re-tagged for the
+  X100VI, and the XMP-fujify stash keeps the *original* camera across that
+  re-tag rather than recording the Fujifilm identity written last time.
+- The bundled ExifTool and dnglab do the full job from inside the app
+  bundle, with no Homebrew copy present.
+
+### Still needs a human
+
+- **Lightroom import.** Nobody has confirmed that an X100VI-targeted DNG
+  actually offers Reala Ace. This is the open `uniqueCameraModel` question
+  from §2 of the contract, and only Lightroom can answer it. If the string
+  is wrong, one field on `TargetCamera.x100VI` changes.
+- **Visual comparison against the canvas.** Screen-recording permission was
+  not available to the terminal, so the built UI has not been put
+  side-by-side with the boards.
+- **Intel Mac.** dnglab ships no x86_64 macOS build, so the bundled copy
+  cannot run there. The code handles it by running every candidate and
+  discarding what fails, but that path has not been exercised on real
+  hardware.
+- **Icon at small sizes.** The white "f" on a green rounded square reads a
+  little like a well-known social icon at 16px, where the differentiating
+  stripe is dropped. Worth a second opinion.
+
+### Deferred by decision
+
+Developer ID signing, notarization and a DMG; Sparkle auto-update (the
+Updates section is deliberately absent from Settings); the "Remove Fujify
+tags" action, though every write now stashes what it would need.
