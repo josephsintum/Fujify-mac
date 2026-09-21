@@ -394,3 +394,5 @@ Package.resolved
 *.ipa
 *.dSYM.zip
 *.dSYM
+## Fujify test fixtures — fetched by tools/fetch-fixtures.sh, never committed
+fixtures/
