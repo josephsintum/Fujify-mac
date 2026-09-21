@@ -306,14 +306,32 @@ final class Pipeline {
         target: TargetCamera,
         exif: ExifTool
     ) async -> SkipReason? {
-        guard skipAlreadyTagged, !item.forceReprocess else { return nil }
-        // Only a DNG can already carry the tags: a RAW never does, and any
-        // DNG we are about to create is brand new. Checking only DNG input
-        // also saves a subprocess per RAW file in a large batch.
-        guard item.url.pathExtension.lowercased() == "dng" else { return nil }
+        guard Self.mightBeAlreadyTagged(
+            url: item.url,
+            skipEnabled: skipAlreadyTagged,
+            forceReprocess: item.forceReprocess
+        ) else { return nil }
+
         guard let tags = try? await exif.readCameraTags(item.url) else { return nil }
         guard tags.alreadyTagged(as: target) else { return nil }
         return .alreadyTagged(as: target.displayName)
+    }
+
+    /// Whether it is even worth reading a file's tags to decide about the
+    /// already-tagged skip (§9).
+    ///
+    /// Pure, so the three conditions can be tested without a real file or a
+    /// real exiftool. Only a DNG can already carry the tags — a RAW never
+    /// does, and any DNG about to be created is brand new — so skipping the
+    /// read for RAW input also saves a subprocess per file in a large batch.
+    static func mightBeAlreadyTagged(
+        url: URL,
+        skipEnabled: Bool,
+        forceReprocess: Bool
+    ) -> Bool {
+        guard skipEnabled else { return false }
+        guard !forceReprocess else { return false }
+        return url.pathExtension.lowercased() == "dng"
     }
 
     // MARK: Internals
