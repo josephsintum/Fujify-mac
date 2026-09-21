@@ -66,7 +66,7 @@ struct TargetCamera: Codable, Identifiable, Hashable, Sendable {
 extension TargetCamera {
     /// The default target, and the fallback whenever a selection disappears.
     ///
-    /// The only target whose tags are verified end-to-end in Lightroom.
+    /// Verified end-to-end in Lightroom.
     static let xT5 = TargetCamera(
         make: "FUJIFILM",
         model: "X-T5",
@@ -75,6 +75,8 @@ extension TargetCamera {
         isBuiltIn: true
     )
 
+    /// Verified end-to-end in Lightroom on 2026-09-21: a Sony A7 V ARW
+    /// tagged with this target offers Reala Ace v2 in the profile browser.
     static let x100VI = TargetCamera(
         make: "FUJIFILM",
         model: "X100VI",

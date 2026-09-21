@@ -38,10 +38,12 @@ A **target** is three strings:
 | `uniqueCameraModel`  | `Fujifilm X-T5` |
 
 `uniqueCameraModel` is stored explicitly, not derived. For every built-in
-target it currently equals `"Fujifilm " + model`, which is verified only for
-the X-T5. **Open question:** confirm against a real X100VI DNG before
-shipping the X100VI target; if Adobe uses a different string, only this one
-field changes.
+target it currently equals `"Fujifilm " + model`. Both built-ins are now
+verified end-to-end in Lightroom: a Sony A7 V (`ILCE-7M5`) ARW converted
+with the X100VI target lists **Reala Ace v2** in the profile browser
+alongside Provia/Std, Astia/Soft and Velvia/Vivid (2026-09-21). Adding a
+target still means guessing this string, which is why the Add Camera sheet
+says the app cannot verify the name.
 
 Built-in targets:
 

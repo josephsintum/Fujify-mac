@@ -202,13 +202,15 @@ installed.
   re-tag rather than recording the Fujifilm identity written last time.
 - The bundled ExifTool and dnglab do the full job from inside the app
   bundle, with no Homebrew copy present.
+- **The X100VI target works in Lightroom (2026-09-21).** Ten Sony A7 V
+  (`ILCE-7M5`) ARWs converted with the X100VI target list Reala Ace v2 in
+  the profile browser. This closes the open `uniqueCameraModel` question
+  from §2 of the contract: `"Fujifilm " + model` is the right string for
+  both built-ins. Note that dnglab cannot read this body at all
+  (`Unknown camera, model 'ILCE-7M5'`), so the batch ran through Adobe.
 
 ### Still needs a human
 
-- **Lightroom import.** Nobody has confirmed that an X100VI-targeted DNG
-  actually offers Reala Ace. This is the open `uniqueCameraModel` question
-  from §2 of the contract, and only Lightroom can answer it. If the string
-  is wrong, one field on `TargetCamera.x100VI` changes.
 - **Visual comparison against the canvas.** Screen-recording permission was
   not available to the terminal, so the built UI has not been put
   side-by-side with the boards.
