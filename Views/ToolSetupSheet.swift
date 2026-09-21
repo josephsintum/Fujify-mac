@@ -9,10 +9,12 @@ import SwiftUI
 /// hasn't dismissed it before. Reachable later from the Settings sheet's
 /// "Re-check converters…" action (step 10).
 struct ToolSetupSheet: View {
-    @Bindable var toolLocator: ToolLocator
+    let pipeline: Pipeline
     @AppStorage("hasSeenToolSetup") private var hasSeenToolSetup: Bool = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+
+    private var toolLocator: ToolLocator { pipeline.toolLocator }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -104,6 +106,7 @@ struct ToolSetupSheet: View {
         HStack {
             Button("Re-check") {
                 toolLocator.probe()
+                pipeline.refreshConverterAvailability()
             }
             Spacer()
             Button("Continue") {

@@ -11,6 +11,11 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if showConverterBanner {
+                converterBanner
+                Divider()
+            }
+
             contentArea
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -67,7 +72,7 @@ struct ContentView: View {
         }
         .navigationTitle("Fujify")
         .sheet(isPresented: $showToolSetup) {
-            ToolSetupSheet(toolLocator: pipeline.toolLocator)
+            ToolSetupSheet(pipeline: pipeline)
         }
         .task {
             if !hasSeenToolSetup, pipeline.toolLocator.activeConverter == .dngOnly {
@@ -177,6 +182,34 @@ struct ContentView: View {
             }
         }
         .fixedSize()
+    }
+
+    /// True when files are queued that can't be processed because no RAW
+    /// converter is installed. Structural check — no status-string matching.
+    private var showConverterBanner: Bool {
+        pipeline.toolLocator.activeConverter == .dngOnly
+            && pipeline.files.contains { $0.url.pathExtension.lowercased() != "dng" }
+    }
+
+    private var converterBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("No RAW converter installed")
+                    .font(.callout.weight(.medium))
+                Text("RAW files can't be converted to DNG until you set one up.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Set Up Converter…") {
+                showToolSetup = true
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 
     private var statusBar: some View {

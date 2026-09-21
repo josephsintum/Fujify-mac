@@ -56,8 +56,11 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 480, height: 360)
+        .onChange(of: toolLocator.preferredConverter) {
+            pipeline.refreshConverterAvailability()
+        }
         .sheet(isPresented: $showToolSetup) {
-            ToolSetupSheet(toolLocator: toolLocator)
+            ToolSetupSheet(pipeline: pipeline)
         }
     }
 }

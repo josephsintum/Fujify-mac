@@ -37,6 +37,12 @@ final class Pipeline {
         "pef", "srw", "arw", "srf", "sr2", "ari",
     ]
 
+    /// Shown when a non-DNG RAW can't be processed because no converter is
+    /// installed (DNG-only mode). Used for both the skipped-on-add status and
+    /// the process-time skip, so the user sees one consistent explanation.
+    static let dngOnlyReason =
+        "Needs a RAW converter — install Adobe DNG Converter or pre-convert in Lightroom Classic."
+
     /// Cap on how many camera-info / thumbnail tasks run at once. Each
     /// spawns a subprocess (exiftool) and/or QuickLook work — letting
     /// thousands fan out at once would thrash CPU and FDs.
@@ -45,8 +51,10 @@ final class Pipeline {
     // MARK: Adding files
 
     /// Adds files to the queue. Folders are walked recursively. Unsupported
-    /// extensions and duplicates (by URL) are silently filtered out. When
-    /// the active converter is .dngOnly, non-DNG files are also dropped.
+    /// extensions and duplicates (by URL) are silently filtered out. When the
+    /// active converter is .dngOnly, non-DNG files are still added but marked
+    /// `.skipped` so the user sees why they can't be processed rather than
+    /// having them silently vanish.
     func add(_ urls: [URL]) async {
         let dngOnly = (toolLocator.activeConverter == .dngOnly)
         let existing = Set(files.map(\.url))
@@ -56,18 +64,36 @@ final class Pipeline {
             collectSupportedFiles(at: url, into: &collected)
         }
 
-        let filtered =
-            collected
+        let newItems = collected
             .filter { !existing.contains($0) }
-            .filter { dngOnly ? $0.pathExtension.lowercased() == "dng" : true }
-
-        let newItems = filtered.map { url -> FileItem in
-            let item = FileItem(url: url)
-            files.append(item)
-            return item
-        }
+            .map { url -> FileItem in
+                let item = FileItem(url: url)
+                if dngOnly, url.pathExtension.lowercased() != "dng" {
+                    item.status = .skipped(reason: Self.dngOnlyReason)
+                }
+                files.append(item)
+                return item
+            }
 
         Task { [weak self] in await self?.populateMetadata(for: newItems) }
+    }
+
+    /// Re-evaluates queued non-DNG files against the active converter. Call
+    /// after the converter changes (re-check / preference change): in DNG-only
+    /// mode pending RAWs become skipped; once a converter is available, items
+    /// previously skipped for lack of one (or for an unsupported camera) flip
+    /// back to pending so they can be retried without re-adding.
+    func refreshConverterAvailability() {
+        let dngOnly = (toolLocator.activeConverter == .dngOnly)
+        for item in files where item.url.pathExtension.lowercased() != "dng" {
+            if dngOnly {
+                if item.status.isPending {
+                    item.status = .skipped(reason: Self.dngOnlyReason)
+                }
+            } else if item.status.isSkipped {
+                item.status = .pending
+            }
+        }
     }
 
     /// Removes the files with the given ids from the queue. Files currently
@@ -110,9 +136,7 @@ final class Pipeline {
                             + "Try Adobe DNG Converter or pre-convert with Lightroom Classic."
                     )
                 } catch PipelineError.dngOnlyMode {
-                    item.status = .skipped(
-                        reason: "DNG-only mode — pre-convert with Lightroom Classic first."
-                    )
+                    item.status = .skipped(reason: Self.dngOnlyReason)
                 } catch {
                     item.status = .error(error.localizedDescription)
                 }
@@ -239,7 +263,7 @@ enum PipelineError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .dngOnlyMode:
-            return "DNG-only mode — pre-convert with Lightroom Classic first"
+            return Pipeline.dngOnlyReason
         }
     }
 }
