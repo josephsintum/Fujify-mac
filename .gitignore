@@ -396,3 +396,7 @@ Package.resolved
 *.dSYM
 ## Fujify test fixtures — fetched by tools/fetch-fixtures.sh, never committed
 fixtures/
+
+## Bundled third-party tools — fetched by tools/fetch-tools.sh, never committed
+Vendor/exiftool/
+Vendor/dnglab

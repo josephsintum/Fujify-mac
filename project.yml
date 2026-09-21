@@ -16,6 +16,21 @@ targets:
       - path: Models
       - path: Views
       - Assets.xcassets
+      # Bundled command-line tools, so a fresh install needs no setup.
+      # Populated by tools/fetch-tools.sh and gitignored; the app falls back
+      # to a Homebrew copy when they are absent. exiftool is a folder
+      # reference because the script has to keep its lib/ beside it.
+      - path: Vendor/exiftool
+        type: folder
+        optional: true
+      # Extensionless, so xcodegen needs telling that it is a resource;
+      # otherwise it lands in the project but never in the bundle.
+      - path: Vendor/dnglab
+        buildPhase: resources
+        optional: true
+      - path: Vendor/exiftool-fujify.config
+      - path: Vendor/LICENSES
+        type: folder
     settings:
       base:
         SWIFT_VERSION: "5.9"

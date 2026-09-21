@@ -1,17 +1,21 @@
 import Foundation
 
-/// Wraps the `dnglab` command-line tool (Homebrew install).
+/// Wraps the `dnglab` command-line tool.
 ///
-/// dnglab signals unsupported cameras with a parseable stderr line — that
-/// case is hoisted to a typed error so the UI can show a helpful "skipped"
-/// state instead of dumping the raw stderr. Other failures are passed
-/// through as `.conversionFailed`.
+/// dnglab ships inside the app bundle, so this is the converter that runs
+/// when the user has installed nothing. It takes an explicit destination
+/// path, unlike Adobe's, so there is no rename step.
+///
+/// See docs/PIPELINE-CONTRACT.md §4.2.
 struct DngLab {
     let executable: URL
 
-    /// Converts `src` (any supported RAW) to a DNG at `dst`. With
-    /// `embedRaw` true the original file is embedded inside the DNG; false
-    /// keeps the output ~half the size.
+    /// Converts `src` to a DNG at `dst`. With `embedRaw` true the original
+    /// file is embedded inside the DNG; false keeps the output ~half the size.
+    ///
+    /// - Throws: `DngLabError.unsupportedCamera` when dnglab does not know
+    ///   the body — a skip, not a failure — and
+    ///   `ProcessingFailure` for anything else.
     func convert(src: URL, dst: URL, embedRaw: Bool) async throws {
         var args = ["convert"]
         if !embedRaw {
@@ -21,7 +25,9 @@ struct DngLab {
 
         let result = try await runSubprocess(executable, args)
 
-        if let model = unsupportedCameraModel(in: result.stderr) {
+        // Checked before the exit code, because dnglab exits non-zero for an
+        // unsupported camera and that case is a skip rather than an error.
+        if let model = Self.unsupportedCameraModel(in: result.stderr) {
             throw DngLabError.unsupportedCamera(model: model)
         }
 
@@ -29,13 +35,25 @@ struct DngLab {
             result.didSucceed,
             FileManager.default.fileExists(atPath: dst.path)
         else {
-            throw DngLabError.conversionFailed(stderr: result.stderr)
+            throw ProcessingFailure.classify(
+                stderr: result.stderr.isEmpty
+                    ? "dnglab exited \(result.exitCode) without writing a DNG."
+                    : result.stderr,
+                step: .convert,
+                tool: .dnglab
+            )
         }
     }
 
-    /// Matches dnglab's "Unknown camera, model 'XXX', make: '...'" stderr
-    /// line and pulls out the model. Returns nil if the message isn't there.
-    private func unsupportedCameraModel(in stderr: String) -> String? {
+    /// Matches dnglab's unsupported-camera message and pulls out the model.
+    ///
+    /// The real string, from dnglab 0.8.0 on a Nikon D1H:
+    ///
+    ///     Error: Unsupported file: Error: Unknown camera, model 'NIKON D1H',
+    ///     make: 'NIKON CORPORATION', mode: '12bit'
+    ///
+    /// Returns nil when the message isn't there.
+    static func unsupportedCameraModel(in stderr: String) -> String? {
         guard
             let regex = try? NSRegularExpression(pattern: "Unknown camera, model '([^']+)'"),
             let match = regex.firstMatch(
@@ -48,18 +66,14 @@ struct DngLab {
     }
 }
 
+/// The one dnglab outcome that isn't a failure.
 enum DngLabError: Error, LocalizedError {
     case unsupportedCamera(model: String)
-    case conversionFailed(stderr: String)
 
     var errorDescription: String? {
         switch self {
         case .unsupportedCamera(let model):
-            return "Unsupported camera (\(model)). " + "Try Adobe DNG Converter for newer bodies, "
-                + "or pre-convert with Lightroom Classic."
-        case .conversionFailed(let stderr):
-            let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            return "dnglab failed: \(trimmed.isEmpty ? "unknown error" : trimmed)"
+            return SkipReason.unsupportedCamera(model: model).summary
         }
     }
 }

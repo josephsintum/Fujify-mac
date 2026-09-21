@@ -3,11 +3,10 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(Pipeline.self) private var pipeline
+    @Environment(CameraStore.self) private var cameraStore
     @State private var isDropTargeted = false
     @State private var selection: Set<FileItem.ID> = []
     @State private var showInspector = false
-    @AppStorage("hasSeenToolSetup") private var hasSeenToolSetup: Bool = false
-    @Binding var showToolSetup: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -71,14 +70,6 @@ struct ContentView: View {
                 .inspectorColumnWidth(min: 260, ideal: 320, max: 480)
         }
         .navigationTitle("Fujify")
-        .sheet(isPresented: $showToolSetup) {
-            ToolSetupSheet(pipeline: pipeline)
-        }
-        .task {
-            if !hasSeenToolSetup, pipeline.toolLocator.activeConverter == .dngOnly {
-                showToolSetup = true
-            }
-        }
     }
 
     // MARK: Subviews
@@ -203,8 +194,8 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Set Up Converter…") {
-                showToolSetup = true
+            SettingsLink {
+                Text("Open Settings…")
             }
         }
         .padding(.horizontal, 16)
@@ -254,7 +245,7 @@ struct ContentView: View {
     }
 
     private var errorCount: Int {
-        pipeline.files.filter { $0.status.isError }.count
+        pipeline.files.filter { $0.status.isFailed }.count
     }
 
     private var canProcess: Bool {
@@ -299,7 +290,7 @@ struct ContentView: View {
         if pipeline.isProcessing {
             pipeline.cancel()
         } else {
-            pipeline.process()
+            pipeline.process(target: cameraStore.selectedTarget)
         }
     }
 
@@ -363,6 +354,10 @@ struct ThumbnailCell: View {
     }
 }
 
+/// The Status column: one word, then the reason in secondary colour.
+///
+/// The full explanation lives in the Inspector, so this stays readable even
+/// when the reason is a long sentence. See docs/PIPELINE-CONTRACT.md §11.
 struct StatusBadge: View {
     let status: FileItem.Status
 
@@ -370,13 +365,18 @@ struct StatusBadge: View {
         HStack(spacing: 6) {
             Image(systemName: icon)
                 .foregroundStyle(iconColor)
-            Text(label)
+            Text(status.label)
                 .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+                .foregroundStyle(status.isPending ? .secondary : .primary)
+            if let reason = status.shortReason {
+                Text("· \(reason)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
         }
-        .help(label)
+        .help(helpText)
     }
 
     private var icon: String {
@@ -384,7 +384,7 @@ struct StatusBadge: View {
         case .pending: return "circle"
         case .processing: return "arrow.triangle.2.circlepath"
         case .done: return "checkmark.circle.fill"
-        case .error: return "exclamationmark.triangle.fill"
+        case .failed: return "exclamationmark.triangle.fill"
         case .skipped: return "exclamationmark.circle"
         }
     }
@@ -394,22 +394,21 @@ struct StatusBadge: View {
         case .pending: return .secondary
         case .processing: return .accentColor
         case .done: return .green
-        case .error: return .orange
+        case .failed: return .orange
         case .skipped: return .yellow
         }
     }
 
-    private var label: String {
+    /// The tooltip carries the full sentence the column had to truncate.
+    private var helpText: String {
         switch status {
-        case .pending: return "Pending"
-        case .processing: return "Processing…"
-        case .done: return "Done"
-        case .error(let msg): return msg.isEmpty ? "Error" : msg
-        case .skipped(let reason): return reason
+        case .failed(let failure): return failure.summary
+        case .skipped(let reason): return reason.summary
+        default: return status.label
         }
     }
 }
 
 #Preview {
-    ContentView(showToolSetup: .constant(false))
+    ContentView()
 }

@@ -152,7 +152,7 @@ struct InspectorView: View {
         filter = ""
 
         guard let item else { return }
-        guard let exiftoolURL = pipeline.toolLocator.exiftool else {
+        guard let exif = pipeline.toolLocator.makeExifTool() else {
             loadError = "exiftool not found"
             return
         }
@@ -160,9 +160,10 @@ struct InspectorView: View {
         isLoading = true
         defer { isLoading = false }
 
-        let exif = ExifTool(executable: exiftoolURL)
         do {
-            metadata = try await exif.readAllMetadata(item.url)
+            // Reads the output DNG once there is one, so the Inspector shows
+            // the tags Fujify actually wrote rather than the source's.
+            metadata = try await exif.readAllMetadata(item.inspectionURL)
         } catch {
             loadError = error.localizedDescription
         }
