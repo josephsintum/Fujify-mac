@@ -31,3 +31,29 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Fujify
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
         INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Joseph Sintum. Original Fujify © 2024 Isidore Paulin. GPL v3."
+  FujifyTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Fujify
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.josephsintum.fujify.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Fujify:
+    build:
+      targets:
+        Fujify: all
+        FujifyTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - FujifyTests
