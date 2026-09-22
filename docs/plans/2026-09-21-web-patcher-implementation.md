@@ -2168,6 +2168,8 @@ Expected: `** TEST SUCCEEDED **`, all Vitest suites green including the golden o
 - `dng/worker.ts` and the Worker message protocol
 - `output/` — the three sinks, atomic temp-then-rename, positioned in-place writes, capability detection
 - `model/` — queue, serial batch runner, state machine, `localStorage` persistence
+- **`exifr` (75 KB, zero deps, read-only) for list thumbnails**, rather than hand-rolling
+  SubIFD preview extraction — see the spec's §10. It does not replace `identity.ts`.
 - `ui/` — the Svelte components, the §7 in-place confirmation, the Inspector
 - Playwright E2E, the GitHub Pages workflow, the PWA shell
 - The contract edits from spec §8 and the README's web section

@@ -356,7 +356,58 @@ and contrast. Findings from it are fixed before the UI is considered done.
 
 ---
 
-## 10. Out of scope, stated plainly
+## 10. Dependencies: what we build and what we import
+
+Surveyed 2026-09-21, prompted by the fair question of why a metadata tool has no
+metadata library. Recorded so it is not re-litigated from memory.
+
+### The patcher stays hand-rolled
+
+| Need | What exists | Why not |
+|---|---|---|
+| Surgical DNG byte patch | nothing | no library patches metadata in place without re-serialising |
+| General metadata write | `@uswriting/exiftool` + `@6over3/zeroperl-ts` — real exiftool 13.42 on Perl-in-WASM, writes, browser-capable | **25.4 MB of WASM**, and exiftool *rebuilds the file* |
+| TIFF re-encode | `utif`, `tiff` | decoders; re-serialising a DNG rewrites image data |
+| XMP write | `piexifjs`, `xmp-js`, `@mtillmann/jpeg-xmp-writer` | all JPEG-only |
+| XMP parse/build | `fast-xml-parser` | cannot preserve the exact-byte-length padding §4.2 depends on |
+
+The decisive point is not bundle size, it is **file safety**. exiftool relocates
+image data when it writes: the 2026-09-21 spike measured `StripOffsets` moving
+226378 → 7358640 and `SubIFD1:PreviewImageStart` 357706 → 6037634 on the same
+fixture, where the patcher left both untouched. Since §5 offers to rewrite DNGs
+**in place** — photographers keep DNGs as masters — the guarantee that no
+existing byte moves is worth more than the code it costs. Importing exiftool
+would also reimport the `Error copying hidden data` failure class that makes
+exiftool's `-m` flag mandatory in contract §3.1.
+
+Cost of building it: `tiff.ts`, `identity.ts`, `xmp.ts` and `patch.ts`, roughly
+400 lines, zero runtime dependencies, fully unit-tested and held to
+`tools/verify-dng.sh`.
+
+### `exifr` for the read-only work — adopt in plan 2
+
+`exifr` 7.1.3: zero dependencies, 75 KB ESM bundle, explicitly read-only, strong
+TIFF support, and a `thumbnail()` API for embedded previews.
+
+§5.3's list thumbnails were specified as hand-rolled SubIFD preview extraction —
+walking sub-IFDs, `NewSubfileType`, `JPEGInterchangeFormat`. That is fiddly,
+purely read-only, and exactly what `exifr` already does well. **Plan 2 uses
+`exifr` for thumbnail extraction rather than reimplementing it.**
+
+It does *not* replace `identity.ts`: that reads the five identity values the
+patcher writes, needs the same byte offsets the write path uses, and must agree
+with `xmp.ts` on the `fujify` namespace. Splitting reads between two
+implementations would be worse than either.
+
+### Optional: `@uswriting/exiftool` in CI only
+
+§7 notes that CI cannot build `fixtures/sample.dng` and so cannot run the golden
+test. WASM exiftool could close that gap, since 25 MB is irrelevant in CI. Worth
+considering if the golden test's CI absence ever bites; not adopted now.
+
+---
+
+## 11. Out of scope, stated plainly
 
 - No server, no upload, no accounts, no telemetry.
 - No RAW conversion.
