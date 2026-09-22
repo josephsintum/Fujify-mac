@@ -370,6 +370,30 @@ Artboards, one per state the spec already commits to:
 | `WebDark.dc.html` | Finished-with-inspector state in dark appearance | §6.3 |
 | `WebBrowserLimited.dc.html` | **Web-only, no Mac/Win equivalent.** Safari or Firefox: Downloads is the only Save to option, with the one-line explanation | §5 |
 
+### Status: drawn, 2026-09-22
+
+All eleven artboards now exist on the canvas (version 16), in four rows below
+the Windows ones. The first three — `WebEmpty`, `WebDone`, `WebBrowserLimited`
+— settled the visual system; the remaining eight were executed in it rather
+than re-deciding it:
+
+- **Menus and adding a camera:** `WebTarget`, `WebSaveTo`, `WebAddCamera`
+- **The in-place question, and files that fail or are skipped:** `WebInPlace`,
+  `WebInspectorFailed`, `WebInspectorSkipped`
+- **Dragging files in, and dark mode:** `WebDragOver`, `WebDark`
+
+The system, for whoever implements it: Instrument Serif for the wordmark and
+dialog titles, Instrument Sans for everything else, JetBrains Mono for
+filenames and tag values. Tailwind stone neutrals with `#00a651` as the one
+accent, doing double duty as the Done state. Browser chrome on every board, so
+the row never reads as a third desktop app. The three-simulation stripe —
+`#d9494c`, `#4aafb8`, `#e3b23c` — caps the app frame rather than decorating it.
+
+Two sticky notes on the canvas carry what the drawings cannot: why **Save to**
+has no Mac or Windows counterpart, and which failure causes and skip reasons a
+browser can actually tell apart (no `toolMissing`, no `unsupportedCamera` —
+there are no tools and no converter).
+
 `WebBrowserLimited` is the one that has no counterpart in the native designs and
 therefore the one most likely to be skipped. It is the screen a Mac user lands
 on first, so it is not optional. **Drawn**, along with `WebEmpty` and
