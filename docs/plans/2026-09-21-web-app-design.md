@@ -1,7 +1,8 @@
 # Fujify for the web — design
 
 **Date:** 2026-09-21
-**Status:** Design agreed; not yet implemented. Implementation plan follows.
+**Status:** Design agreed. The patcher is built and tested; the UI is designed
+on the canvas but not yet built. See §9 for what is drawn and what is left.
 **Decision:** Build a browser-only Fujify — a static page, no server — that
 accepts DNG files only and rewrites the camera identity in the user's
 browser. It becomes the primary Fujify; the macOS app continues alongside it.
@@ -307,8 +308,37 @@ held to the same bar rather than being improvised in code.
 
 Canvas: https://claude.ai/artifact/5aPDVzRTxN3kS2d7E115wL
 
-It currently carries 28 artboards in two rows, `Mac*` (15) and `Win*` (13).
-The web design is a third row, `Web*`, named to mirror them.
+It carried 28 artboards in two rows, `Mac*` (15) and `Win*` (13). The web
+design is a third row, `Web*`, named to mirror them, at y = 10700.
+
+### Status of this section (2026-09-21)
+
+**The visual direction is designed and approved.** The `Web*` row exists on the
+canvas (version 14) with the three artboards that establish the system:
+`WebEmpty`, `WebDone` and `WebBrowserLimited`. The remaining eight from the
+table below are still to draw; they follow the decisions recorded here and in
+the row's sticky note, so they are execution rather than open questions.
+
+The `frontend-design` skill was used, as this section requires, and settled:
+
+| Decision | What was chosen |
+|---|---|
+| Frame | Every board sits inside browser chrome. Without it the row reads as a third desktop app beside macOS and Windows. |
+| Type | Instrument Serif for the wordmark and headings, Instrument Sans for UI, JetBrains Mono for filenames, tag names and values. |
+| Neutrals | Tailwind `stone` — warm, and it suits photography better than `slate`. |
+| Primary | The Fujify green `#00a651`, doubling as the Done colour so the brand sits on the happy path. |
+| Status | Skipped `amber-500 #f59e0b`, Failed `red-600 #dc2626` — matching Windows rather than the Mac's orange, since red for failure is the web convention. |
+| The one motif | The three-simulation stripe is structural, not decorative: it caps the app frame on every screen and becomes the progress bar during a batch, filling Velvia red → Provia teal → Classic Neg yellow. It is the page's only Fuji reference, which keeps §9's trademark hygiene intact. |
+
+One line of copy came out of reading the patcher rather than this document, and
+is worth keeping: the Done card says *"Two edits, 14 bytes added — no existing
+byte moved."* The guarantee in §4 is the strongest thing about this
+implementation, and it is the reassurance a photographer rewriting a master
+actually wants to read.
+
+**The §9 gate is therefore partly lifted.** The system is settled, so a
+component may be built for a state that is drawn. Nothing in `web/src/ui/`
+should be written for the eight undrawn states until they are on the canvas.
 
 ### This is plan 2's Task 1
 
@@ -342,7 +372,8 @@ Artboards, one per state the spec already commits to:
 
 `WebBrowserLimited` is the one that has no counterpart in the native designs and
 therefore the one most likely to be skipped. It is the screen a Mac user lands
-on first, so it is not optional.
+on first, so it is not optional. **Drawn**, along with `WebEmpty` and
+`WebDone`; the other eight rows of this table are outstanding.
 
 No `WebIcon` artboard: the web app reuses the existing app icon as a favicon and
 needs no new icon design.

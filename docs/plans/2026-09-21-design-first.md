@@ -30,6 +30,11 @@ Rows on the canvas:
    monogram, and the Windows icon at every .ico size in taskbar and
    Explorer context.
 9. **In-place DNG confirmation** — the once-per-batch alert on each OS.
+10. **Web** — the browser version, added 2026-09-21 and owned by
+    [2026-09-21-web-app-design.md](2026-09-21-web-app-design.md) §9 rather
+    than by this document: empty state, finished + Inspector, and the
+    Safari/Firefox screen where Downloads is the only destination. Three of
+    its eleven artboards are drawn; the visual system is settled.
 
 Sticky notes on each row record the rationale and OS mappings.
 
