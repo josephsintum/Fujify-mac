@@ -33,8 +33,19 @@ interface Placement {
   type: number;
   /** Value length in bytes, which for our ASCII and BYTE tags is also the TIFF count. */
   count: number;
-  /** Absolute file offset of the value bytes once the plan is applied. */
-  dataOffset: number;
+  /** Absolute file offset of the value bytes once the plan is applied, or null when inline. */
+  dataOffset: number | null;
+  /**
+   * The 4-byte value field, for a value of 4 bytes or fewer. TIFF stores such a value
+   * INSIDE the 12-byte entry, and every reader — readIfd0 included — decides that from
+   * the count alone. Writing an offset there instead would be read back as the value.
+   */
+  inline: Uint8Array | null;
+}
+
+/** The four bytes that go in the entry's value field: the inline value, or an offset. */
+function valueField(p: Placement, littleEndian: boolean): Uint8Array {
+  return p.inline ?? u32(p.dataOffset!, littleEndian);
 }
 
 class Appender {
@@ -77,16 +88,26 @@ function placeUniqueCameraModel(
 ): Placement {
   const bytes = new TextEncoder().encode(`${target.uniqueCameraModel}\0`);
   const existing = info.ifd.entries.get(TAG.UniqueCameraModel);
+  const base = { tag: TAG.UniqueCameraModel, type: 2, count: bytes.byteLength };
+
+  if (bytes.byteLength <= 4) {
+    // A value this short belongs in the entry itself, whatever the old one did. Going
+    // out of line here would set a count of <= 4 beside an offset, and the reader would
+    // hand back the first bytes of that offset as the model name.
+    const field = new Uint8Array(4);
+    field.set(bytes);
+    return { ...base, dataOffset: null, inline: field };
+  }
 
   if (existing && !existing.inline && bytes.byteLength <= existing.byteLength) {
     // Fits where it is: overwrite and NUL-pad the rest, then shorten the count.
     const padded = new Uint8Array(existing.byteLength);
     padded.set(bytes);
     edits.push({ offset: existing.dataOffset, bytes: padded });
-    return { tag: TAG.UniqueCameraModel, type: 2, count: bytes.byteLength, dataOffset: existing.dataOffset };
+    return { ...base, dataOffset: existing.dataOffset, inline: null };
   }
 
-  return { tag: TAG.UniqueCameraModel, type: 2, count: bytes.byteLength, dataOffset: appender.push(bytes) };
+  return { ...base, dataOffset: appender.push(bytes), inline: null };
 }
 
 /** The new XMP packet, and where it will live. */
@@ -110,12 +131,27 @@ function placeXmp(
       // The whole point: the packet's padding absorbs the change, so the file
       // differs from the original by a few hundred bytes in the middle and nothing else.
       edits.push({ offset: existing.dataOffset, bytes: fitted });
-      return { tag: TAG.XMP, type: existing.type, count: existing.byteLength, dataOffset: existing.dataOffset };
+      return {
+        tag: TAG.XMP,
+        type: existing.type,
+        count: existing.byteLength,
+        dataOffset: existing.dataOffset,
+        inline: null,
+      };
     }
   }
 
   const packet = freshPacket(body, trailer);
-  return { tag: TAG.XMP, type: 1, count: packet.byteLength, dataOffset: appender.push(packet) };
+  // Keep whatever type the existing entry declared — exiftool writes 1 (BYTE) but
+  // 7 (UNDEFINED) is equally legal for XMP, and rewriting it is a change we do not
+  // need to make. Only a tag we are adding from nothing gets to pick.
+  return {
+    tag: TAG.XMP,
+    type: existing?.type ?? 1,
+    count: packet.byteLength,
+    dataOffset: appender.push(packet),
+    inline: null,
+  };
 }
 
 /**
@@ -144,7 +180,7 @@ function relocateIfd0(
     dv.setUint16(0, p.tag, littleEndian);
     dv.setUint16(2, p.type, littleEndian);
     dv.setUint32(4, p.count, littleEndian);
-    dv.setUint32(8, p.dataOffset, littleEndian);
+    record.set(valueField(p, littleEndian), 8);
     byTag.set(p.tag, record);
   }
 
@@ -158,6 +194,41 @@ function relocateIfd0(
   dv.setUint32(2 + tags.length * 12, next, littleEndian);
 
   return appender.push(ifd);
+}
+
+/**
+ * The module's central guarantee, enforced rather than merely intended: every edit
+ * lands inside the original file, no two edits overlap, and the output is the original
+ * plus the append and nothing else. Any of those failing means a byte that already
+ * existed has moved or been clobbered — and the SubIFDs, MakerNotes, previews and
+ * embedded original that hold absolute offsets are only valid because none does.
+ *
+ * Exported for the tests, which feed it hand-built plans; callers want planPatch.
+ */
+export function validatePlan(buf: Uint8Array, plan: PatchPlan): void {
+  const expected = buf.byteLength + (plan.append?.byteLength ?? 0);
+  if (plan.outputLength !== expected) {
+    throw new Error(
+      `plan outputLength ${plan.outputLength} is not the original ${buf.byteLength} plus its append (${expected})`,
+    );
+  }
+
+  const sorted = [...plan.edits].sort((a, b) => a.offset - b.offset);
+  let prevEnd = 0;
+  let prevOffset = -1;
+  for (const edit of sorted) {
+    const end = edit.offset + edit.bytes.byteLength;
+    if (edit.offset < 0 || end > buf.byteLength) {
+      throw new Error(
+        `plan edit at ${edit.offset}..${end} is outside the original file (0..${buf.byteLength})`,
+      );
+    }
+    if (edit.offset < prevEnd) {
+      throw new Error(`plan edits overlap: ${prevOffset}..${prevEnd} and ${edit.offset}..${end}`);
+    }
+    prevEnd = end;
+    prevOffset = edit.offset;
+  }
 }
 
 export function planPatch(buf: Uint8Array, target: TargetCamera): PatchPlan {
@@ -179,31 +250,34 @@ export function planPatch(buf: Uint8Array, target: TargetCamera): PatchPlan {
     const ifdOffset = relocateIfd0(buf, info, placements, appender, le);
     const append = appender.build();
     edits.push({ offset: 4, bytes: u32(ifdOffset, le) });
-    return {
+    const plan: PatchPlan = {
       edits,
       append,
       outputLength: buf.byteLength + append!.byteLength,
       relocatedIfd: true,
     };
+    validatePlan(buf, plan);
+    return plan;
   }
 
   // Every tag already has an entry: update count and value offset in each one.
   for (const p of placements) {
     const entry = info.ifd.entries.get(p.tag)!;
     const record = new Uint8Array(8);
-    const dv = new DataView(record.buffer);
-    dv.setUint32(0, p.count, le);
-    dv.setUint32(4, p.dataOffset, le);
+    new DataView(record.buffer).setUint32(0, p.count, le);
+    record.set(valueField(p, le), 4);
     edits.push({ offset: entry.entryOffset + 4, bytes: record });
   }
 
   const append = appender.build();
-  return {
+  const plan: PatchPlan = {
     edits,
     append,
     outputLength: buf.byteLength + (append?.byteLength ?? 0),
     relocatedIfd: false,
   };
+  validatePlan(buf, plan);
+  return plan;
 }
 
 /** Applies a plan to a copy of the buffer. Used by tests and the in-memory output sinks. */

@@ -33,8 +33,33 @@ export const EMPTY_PACKET =
   `</x:xmpmeta>\n` +
   TRAILER;
 
+/**
+ * The index of the `>` that really ends the tag starting at `from`, or -1. A plain
+ * indexOf('>') is wrong: `>` is legal unescaped inside an attribute value, so it can
+ * stop early and hand back a truncated open tag.
+ */
+function tagEnd(s: string, from: number): number {
+  let quote = '';
+  for (let i = from; i < s.length; i++) {
+    const c = s[i]!;
+    if (quote) {
+      if (c === quote) quote = '';
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '>') return i;
+  }
+  return -1;
+}
+
 export function encodeEntities(s: string): string {
   return s
+    // C0 controls other than tab/LF/CR are outside XML 1.0's Char production and have
+    // no escape, so a strict parser rejects the WHOLE packet — losing the file's crs
+    // develop settings, xmpMM history, ratings and keywords along with our own block.
+    // readAscii passes any non-NUL byte through, so a stray 0x0B in the source Make
+    // reaches here. Dropping it is the only representable choice.
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -66,7 +91,8 @@ export function rewriteXmp(
   if (descOpen < 0) throw new Error('XMP packet has no rdf:Description');
 
   // A self-closing Description has nowhere to put child elements; give it a body.
-  const descOpenEnd = body.indexOf('>', descOpen);
+  const descOpenEnd = tagEnd(body, descOpen);
+  if (descOpenEnd < 0) throw new Error('XMP packet has an unterminated rdf:Description tag');
   if (body[descOpenEnd - 1] === '/') {
     body = `${body.slice(0, descOpenEnd - 1)}>\n  </rdf:Description>${body.slice(descOpenEnd + 1)}`;
   }
@@ -77,20 +103,41 @@ export function rewriteXmp(
   // bind the element we are patching, so the check must be scoped to this element's
   // own open tag, not the whole packet body, or we can emit an element that uses an
   // unbound prefix.
-  const descOpenEndForNs = body.indexOf('>', descOpen);
-  const openTag = body.slice(descOpen, descOpenEndForNs + 1);
+  const openTagEnd = tagEnd(body, descOpen);
+  if (openTagEnd < 0) throw new Error('XMP packet has an unterminated rdf:Description tag');
+  const openTag = body.slice(descOpen, openTagEnd + 1);
+
+  // An attribute-form fujify:TargetModel names the same XMP property as the element we
+  // write below. The element-form strip further down cannot see it, so it would survive
+  // and the packet would carry the property twice — exiftool then lists both values,
+  // the stale one first, which is what a re-tag is supposed to have replaced.
+  let newOpenTag = openTag.replace(/\s+fujify:TargetModel\s*=\s*("[^"]*"|'[^']*')/g, '');
+
   let decls = '';
   for (const [prefix, uri] of Object.entries(NS)) {
-    if (!new RegExp(`xmlns:${prefix}\\s*=`).test(openTag)) decls += `\n    xmlns:${prefix}="${uri}"`;
+    if (!new RegExp(`xmlns:${prefix}\\s*=`).test(newOpenTag)) decls += `\n    xmlns:${prefix}="${uri}"`;
   }
   if (decls) {
-    const at = descOpen + '<rdf:Description'.length;
-    body = body.slice(0, at) + decls + body.slice(at);
+    newOpenTag = '<rdf:Description' + decls + newOpenTag.slice('<rdf:Description'.length);
+  }
+  if (newOpenTag !== openTag) {
+    body = body.slice(0, descOpen) + newOpenTag + body.slice(openTagEnd + 1);
   }
 
   // Drop the blocks we own before rewriting them, so a re-run replaces rather than repeats.
   body = body.replace(/[ \t]*<photoshop:CameraProfiles>[\s\S]*?<\/photoshop:CameraProfiles>[ \t]*\r?\n?/g, '');
   body = body.replace(/[ \t]*<fujify:TargetModel>[\s\S]*?<\/fujify:TargetModel>[ \t]*\r?\n?/g, '');
+  // fujify:Version is re-emitted on every pass (see below), so it is always dropped first.
+  body = body.replace(/[ \t]*<fujify:Version>[\s\S]*?<\/fujify:Version>[ \t]*\r?\n?/g, '');
+  if (!keepStash) {
+    // We are about to write a fresh stash, so any existing one is ours to replace.
+    // patch.ts never reaches here with a stash present, but that makes this cheap
+    // rather than unnecessary: it is what keeps rewriteXmp idempotent for any caller.
+    body = body.replace(
+      /[ \t]*<fujify:(Original(?:Make|Model|UniqueCameraModel))>[\s\S]*?<\/fujify:\1>[ \t]*\r?\n?/g,
+      '',
+    );
+  }
 
   const e = encodeEntities;
   const profiles =
@@ -109,14 +156,21 @@ export function rewriteXmp(
     ? ''
     : `   <fujify:OriginalMake>${e(original.make)}</fujify:OriginalMake>\n` +
       `   <fujify:OriginalModel>${e(original.model)}</fujify:OriginalModel>\n` +
-      `   <fujify:OriginalUniqueCameraModel>${e(original.uniqueCameraModel)}</fujify:OriginalUniqueCameraModel>\n` +
-      `   <fujify:Version>1</fujify:Version>\n`;
+      `   <fujify:OriginalUniqueCameraModel>${e(original.uniqueCameraModel)}</fujify:OriginalUniqueCameraModel>\n`;
+
+  // Emitted on every pass, re-tag included, because mac/Engine/ExifTool.swift always
+  // re-emits it. Keeping the two implementations in step matters the day §3.2's stash
+  // shape changes and the version marker is what tells the reader which shape it has.
+  const version = `   <fujify:Version>1</fujify:Version>\n`;
 
   const targetModel = `   <fujify:TargetModel>${e(target.model)}</fujify:TargetModel>\n`;
 
   const descClose = body.indexOf('</rdf:Description>');
   if (descClose < 0) throw new Error('XMP packet has no </rdf:Description>');
-  return { body: body.slice(0, descClose) + profiles + stash + targetModel + body.slice(descClose), trailer };
+  return {
+    body: body.slice(0, descClose) + profiles + stash + version + targetModel + body.slice(descClose),
+    trailer,
+  };
 }
 
 /** Adobe's padding shape: runs of 100 spaces separated by newlines. */
