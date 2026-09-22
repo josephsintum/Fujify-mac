@@ -403,3 +403,6 @@ Vendor/dnglab
 
 ## Generated icon exports
 build/
+
+## Subagent-driven development scratch — ledgers, briefs, review packages
+.superpowers/
