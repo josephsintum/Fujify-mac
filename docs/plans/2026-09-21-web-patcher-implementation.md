@@ -857,6 +857,17 @@ describe('readDng', () => {
     expect(hasStash(info)).toBe(true);
   });
 
+  it('reads the profile tags when the rdf:li contains a nested self-closing child', () => {
+    const nested = TAGGED.replace(
+      '      <stCamera:CameraRawProfile>True</stCamera:CameraRawProfile>',
+      '      <stCamera:Embedded rdf:parseType="Resource"/>\n      <stCamera:CameraRawProfile>True</stCamera:CameraRawProfile>',
+    );
+    const info = readDng(synthDng({ xmp: xmpPacket(512, nested) }));
+    expect(info.profiles.make).toBe('FUJIFILM');
+    expect(info.profiles.model).toBe('X-T5');
+    expect(info.profiles.uniqueCameraModel).toBe('Fujifilm X-T5');
+  });
+
   it('reports a null packet when the file has no XMP', () => {
     const info = readDng(synthDng({ xmp: null }));
     expect(info.xmpPacket).toBeNull();
@@ -997,7 +1008,11 @@ export function readXmpProperty(xml: string, qname: string): string {
 function firstProfileItem(packet: string): string {
   const block = packet.match(/<photoshop:CameraProfiles>([\s\S]*?)<\/photoshop:CameraProfiles>/);
   if (!block?.[1]) return '';
-  const li = block[1].match(/<rdf:li[\s\S]*?(?:\/>|<\/rdf:li>)/);
+  // Two alternatives, self-closing tried first. A single lazy terminator of
+  // `(?:\/>|<\/rdf:li>)` would stop at the first `/>` in the item — including one
+  // belonging to a nested self-closing child — and silently cut every field after
+  // it out of the extraction window, so a present stCamera:Make reads as absent.
+  const li = block[1].match(/<rdf:li\b[^>]*\/>|<rdf:li\b[^>]*>[\s\S]*?<\/rdf:li>/);
   return li?.[0] ?? '';
 }
 
@@ -1052,7 +1067,7 @@ export function hasStash(info: DngInfo): boolean {
 cd /Users/josephsintum/code/Fujify/web && npm test -- tests/dng/identity.test.ts
 ```
 
-Expected: 12 passed.
+Expected: 13 passed.
 
 - [ ] **Step 5: Commit**
 
