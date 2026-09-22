@@ -297,7 +297,66 @@ No "Open in Lightroom": there is no browser equivalent.
 
 ---
 
-## 9. Out of scope, stated plainly
+## 9. UI design happens on the canvas, before any UI is built
+
+**Normative.** No Svelte component in `web/src/ui/` is written until the web
+design exists on the shared design canvas and has been approved. The macOS and
+Windows designs were settled this way during the design-first phase
+([2026-09-21-design-first.md](2026-09-21-design-first.md)); the web design is
+held to the same bar rather than being improvised in code.
+
+Canvas: https://claude.ai/artifact/5aPDVzRTxN3kS2d7E115wL
+
+It currently carries 28 artboards in two rows, `Mac*` (15) and `Win*` (13).
+The web design is a third row, `Web*`, named to mirror them.
+
+### This is plan 2's Task 1
+
+**Before it:** invoke the `frontend-design` skill and make the visual decisions
+with it — type, colour, density, the accent, how a browser chrome-less window
+reads next to two native ones. The component system is **shadcn-svelte** (Bits UI +
+Tailwind v4, chosen by the repo owner on 2026-09-21), so draw in that idiom: real
+Tailwind tokens, real Bits UI component shapes, so the canvas and the eventual
+build agree rather than diverging the moment code starts.
+
+**Read `project/canvas.json` first**, then place the `Web*` row below the
+existing rows, following the canvas's own spacing convention (80 px between
+frames in a row, 120 px between rows) and adding a `title` note for the row.
+Desktop artboards are 1280–1440 wide.
+
+Artboards, one per state the spec already commits to:
+
+| Artboard | What it shows | Spec |
+|---|---|---|
+| `WebEmpty.dc.html` | Empty state: DNG only, Lightroom converts, nothing is uploaded | §6.3 |
+| `WebDone.dc.html` | Finished batch, status bar filtering Done / Skipped / Failed, Retry All | §6.3 |
+| `WebTarget.dc.html` | **Profile as** menu — X-T5, X100VI, user targets, Add Camera… | §2, §6.3 |
+| `WebSaveTo.dc.html` | **Save to** menu — Downloads / Folder… / In place, with the Chromium-only note | §5 |
+| `WebAddCamera.dc.html` | Add Camera dialog: make + model, tag preview, the "Lightroom is the judge" line | §6.3 |
+| `WebInPlace.dc.html` | The once-per-batch in-place confirmation, three choices | §5, contract §7 |
+| `WebInspectorFailed.dc.html` | A failed file selected: cause, what to do, collapsed detail with Copy | §6.1, §6.3 |
+| `WebInspectorSkipped.dc.html` | A skipped file: `alreadyTagged` and `notDng` | §6.1 |
+| `WebDragOver.dc.html` | Files dragged over the window | §6.3 |
+| `WebDark.dc.html` | Finished-with-inspector state in dark appearance | §6.3 |
+| `WebBrowserLimited.dc.html` | **Web-only, no Mac/Win equivalent.** Safari or Firefox: Downloads is the only Save to option, with the one-line explanation | §5 |
+
+`WebBrowserLimited` is the one that has no counterpart in the native designs and
+therefore the one most likely to be skipped. It is the screen a Mac user lands
+on first, so it is not optional.
+
+No `WebIcon` artboard: the web app reuses the existing app icon as a favicon and
+needs no new icon design.
+
+### After the build
+
+Once the UI is implemented, run the `web-design-guidelines` skill over
+`web/src/ui/` — it is a review skill, not a design one, so it belongs after the
+code exists, checking semantics, focus states, keyboard navigation, tap targets
+and contrast. Findings from it are fixed before the UI is considered done.
+
+---
+
+## 10. Out of scope, stated plainly
 
 - No server, no upload, no accounts, no telemetry.
 - No RAW conversion.

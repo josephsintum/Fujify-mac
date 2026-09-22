@@ -2144,6 +2144,12 @@ Expected: `** TEST SUCCEEDED **`, all Vitest suites green including the golden o
 
 ## What plan 2 picks up
 
+- **Task 1: the UI design, on the shared design canvas, before any component is written.**
+  Normative — see the spec's §9. Uses the `frontend-design` skill to make the visual
+  decisions, draws a `Web*` row of 11 artboards on
+  https://claude.ai/artifact/5aPDVzRTxN3kS2d7E115wL mirroring the existing `Mac*` and
+  `Win*` rows, in shadcn-svelte's idiom (Bits UI + Tailwind v4) so canvas and build agree.
+  `web-design-guidelines` runs afterwards, over the built UI, as a compliance review.
 - `dng/worker.ts` and the Worker message protocol
 - `output/` — the three sinks, atomic temp-then-rename, positioned in-place writes, capability detection
 - `model/` — queue, serial batch runner, state machine, `localStorage` persistence
