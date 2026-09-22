@@ -8,10 +8,6 @@ struct CamerasSettings: View {
     @State private var selection: TargetCamera.ID?
     @State private var showAddCamera = false
 
-    private static let adobeCameraList = URL(
-        string: "https://helpx.adobe.com/camera-raw/kb/camera-raw-plug-supported-cameras.html"
-    )!
-
     var body: some View {
         @Bindable var cameraStore = cameraStore
 
@@ -75,7 +71,7 @@ struct CamerasSettings: View {
                     )
                     Link(
                         "Adobe's supported cameras list",
-                        destination: Self.adobeCameraList
+                        destination: ExternalLinks.adobeCameraList
                     )
                 }
                 .font(.caption)

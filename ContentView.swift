@@ -32,6 +32,17 @@ struct ContentView: View {
             case .failed: return status.isFailed
             }
         }
+
+        /// The tally this segment labels itself with. Lives next to `matches`
+        /// so the two can't disagree about what a segment means.
+        func count(in counts: Pipeline.Counts) -> Int {
+            switch self {
+            case .all: return counts.total
+            case .done: return counts.done
+            case .skipped: return counts.skipped
+            case .failed: return counts.failed
+            }
+        }
     }
 
     var body: some View {
@@ -79,9 +90,7 @@ struct ContentView: View {
                 ),
                 onUpdateInPlace: startProcessing,
                 onChooseFolder: {
-                    Task {
-                        if await chooseOutputFolder() { startProcessing() }
-                    }
+                    if chooseOutputFolder() { startProcessing() }
                 }
             )
         }
@@ -144,7 +153,7 @@ struct ContentView: View {
             }
             Divider()
             Button("Choose Folder…") {
-                Task { _ = await chooseOutputFolder() }
+                _ = chooseOutputFolder()
             }
         } label: {
             HStack(spacing: 4) {
@@ -307,12 +316,16 @@ struct ContentView: View {
         let outputURLs = items.compactMap(\.outputURL)
         let count = items.count
 
-        Button(plural("Show in Finder", count)) {
+        Button(count > 1 ? "Show \(count) in Finder" : "Show in Finder") {
             NSWorkspace.shared.activateFileViewerSelecting(sourceURLs)
         }
         .disabled(sourceURLs.isEmpty)
 
-        Button(plural("Show Output DNG in Finder", outputURLs.count)) {
+        Button(
+            outputURLs.count > 1
+                ? "Show \(outputURLs.count) Output DNGs in Finder"
+                : "Show Output DNG in Finder"
+        ) {
             NSWorkspace.shared.activateFileViewerSelecting(outputURLs)
         }
         .disabled(outputURLs.isEmpty)
@@ -320,7 +333,7 @@ struct ContentView: View {
         // Hidden rather than disabled when Lightroom is absent: a permanently
         // greyed item is just clutter.
         if Lightroom.isInstalled {
-            Button(plural("Open in Lightroom", count)) {
+            Button(count > 1 ? "Open \(count) in Lightroom" : "Open in Lightroom") {
                 // The output once there is one, so the user sees the tagged
                 // file rather than the untouched source.
                 for item in items { Lightroom.open(item.inspectionURL) }
@@ -328,7 +341,11 @@ struct ContentView: View {
             .disabled(items.isEmpty)
         }
 
-        Button(plural("Open with Default App", count)) {
+        Button(
+            count > 1
+                ? "Open \(count) with Default App"
+                : "Open with Default App"
+        ) {
             for url in sourceURLs { NSWorkspace.shared.open(url) }
         }
         .disabled(sourceURLs.isEmpty)
@@ -342,7 +359,7 @@ struct ContentView: View {
         .keyboardShortcut("i", modifiers: .command)
         .disabled(ids.count != 1)
 
-        Button(plural("Copy Path", count)) {
+        Button(count > 1 ? "Copy \(count) Paths" : "Copy Path") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(
                 items.map(\.inspectionURL.path).joined(separator: "\n"), forType: .string)
@@ -367,16 +384,6 @@ struct ContentView: View {
         .disabled(ids.isEmpty)
     }
 
-    /// "Show in Finder" for one, "Show 3 in Finder" for several — matching
-    /// how macOS menus pluralise.
-    private func plural(_ title: String, _ count: Int) -> String {
-        guard count > 1 else { return title }
-        if let range = title.range(of: " in ") ?? title.range(of: " with ") {
-            return title.replacingCharacters(
-                in: range.lowerBound..<range.lowerBound, with: " \(count)")
-        }
-        return "\(title) (\(count))"
-    }
 
     // MARK: Banner
 
@@ -435,32 +442,38 @@ struct ContentView: View {
     // MARK: Status bar
 
     private var statusBar: some View {
-        HStack(spacing: 12) {
+        // Counting walks every file, and this bar is rebuilt on each of the
+        // three status writes per file during a batch. Read it once here and
+        // pass it down rather than letting six computed properties each take
+        // their own pass.
+        let counts = pipeline.counts
+        return HStack(spacing: 12) {
             if pipeline.isProcessing {
                 ProgressView(
-                    value: Double(pipeline.completedCount),
-                    total: Double(max(pipeline.files.count, 1))
+                    value: Double(counts.settled),
+                    total: Double(max(counts.total, 1))
                 )
                 .progressViewStyle(.linear)
                 .frame(width: 180)
 
-                Text(statusBarText)
-            } else if hasSettledOutcomes {
+                Text(statusBarText(counts))
+            } else if counts.settled > 0 {
                 Picker("Show", selection: $statusFilter) {
                     ForEach(StatusFilter.allCases) { filter in
-                        Text(filterLabel(filter)).tag(filter)
+                        Text("\(filter.rawValue) \(filter.count(in: counts).formatted())")
+                            .tag(filter)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
 
-                if statusFilter != .all, statusFilter != .done, retryableCount > 0 {
+                if statusFilter != .all, statusFilter != .done, counts.retryable > 0 {
                     Button("Retry All") { pipeline.retryAll() }
                         .controlSize(.small)
                 }
             } else {
-                Text(statusBarText)
+                Text(statusBarText(counts))
             }
 
             Spacer()
@@ -475,18 +488,6 @@ struct ContentView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(.bar)
-    }
-
-    private func filterLabel(_ filter: StatusFilter) -> String {
-        let counts = pipeline.counts
-        let n =
-            switch filter {
-            case .all: counts.total
-            case .done: counts.done
-            case .skipped: counts.skipped
-            case .failed: counts.failed
-            }
-        return "\(filter.rawValue) \(n.formatted())"
     }
 
     // MARK: Derived state
@@ -505,16 +506,6 @@ struct ContentView: View {
     }
 
     private var pendingCount: Int { pipeline.counts.pending }
-    private var retryableCount: Int {
-        pipeline.files.filter { $0.status.isRetryable }.count
-    }
-
-    /// Whether a batch has actually run, which is when the filter earns its
-    /// place in the status bar.
-    private var hasSettledOutcomes: Bool {
-        let counts = pipeline.counts
-        return counts.done + counts.skipped + counts.failed > 0
-    }
 
     private var canProcess: Bool {
         pipeline.isProcessing || (pendingCount > 0 && toolLocator.hasMinimumTools)
@@ -535,7 +526,7 @@ struct ContentView: View {
 
     private var outputFolderLabel: String {
         guard let folder = pipeline.outputFolder else { return "In place" }
-        return (folder.path as NSString).abbreviatingWithTildeInPath
+        return folder.displayPath
     }
 
     /// "Adobe DNG Converter · exiftool 13.59", so the user always knows which
@@ -556,8 +547,7 @@ struct ContentView: View {
         return parts.joined(separator: " · ")
     }
 
-    private var statusBarText: String {
-        let counts = pipeline.counts
+    private func statusBarText(_ counts: Pipeline.Counts) -> String {
         if pipeline.isProcessing {
             var text = "\(counts.settled.formatted()) of \(counts.total.formatted()) processed"
             if let remaining = pipeline.estimatedRemaining {
@@ -566,20 +556,32 @@ struct ContentView: View {
             return text
         }
         var parts: [String] = []
-        if counts.done > 0 { parts.append("\(counts.done.formatted()) done") }
-        if counts.skipped > 0 { parts.append("\(counts.skipped.formatted()) skipped") }
-        if counts.failed > 0 { parts.append("\(counts.failed.formatted()) failed") }
+        let outcomes = counts.outcomeSummary
+        if !outcomes.isEmpty { parts.append(outcomes) }
         if counts.pending > 0 { parts.append("\(counts.pending.formatted()) pending") }
         return parts.isEmpty
             ? "\(counts.total.formatted()) file\(counts.total == 1 ? "" : "s")"
             : parts.joined(separator: " · ")
     }
 
-    private func formatted(_ interval: TimeInterval) -> String {
+    /// DateComponentsFormatter builds a Calendar on init, and the status bar
+    /// asks for the remaining time on every redraw of a running batch. Two
+    /// formatters, made once.
+    private static let secondsFormatter = makeFormatter(units: [.second])
+    private static let longFormatter = makeFormatter(units: [.hour, .minute])
+
+    private static func makeFormatter(
+        units: NSCalendar.Unit
+    ) -> DateComponentsFormatter {
         let formatter = DateComponentsFormatter()
         formatter.unitsStyle = .short
-        formatter.allowedUnits = interval < 60 ? [.second] : [.hour, .minute]
+        formatter.allowedUnits = units
         formatter.maximumUnitCount = 2
+        return formatter
+    }
+
+    private func formatted(_ interval: TimeInterval) -> String {
+        let formatter = interval < 60 ? Self.secondsFormatter : Self.longFormatter
         return formatter.string(from: max(interval, 1)) ?? "a moment"
     }
 
@@ -619,14 +621,9 @@ struct ContentView: View {
     /// Returns true when the user actually picked a folder, so the in-place
     /// sheet's "Choose Folder…" can go straight on to processing.
     @MainActor
-    private func chooseOutputFolder() async -> Bool {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.message = "Choose output folder for processed DNGs"
-        panel.prompt = "Choose"
-        guard panel.runModal() == .OK, let url = panel.url else { return false }
+    private func chooseOutputFolder() -> Bool {
+        guard let url = FolderPicker.choose(message: FolderPicker.outputFolderMessage)
+        else { return false }
         pipeline.outputFolder = url
         return true
     }

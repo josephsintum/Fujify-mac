@@ -36,16 +36,13 @@ enum Lightroom {
         return nil
     }
 
-    static var isInstalled: Bool { installedApplication() != nil }
+    /// Resolved once: `isInstalled` is read from inside view bodies, and
+    /// each call walked up to four bundle identifiers through LaunchServices.
+    /// Installing Lightroom while Fujify is running is rare enough to need a
+    /// relaunch.
+    private static let resolved: URL? = installedApplication()
 
-    /// The app's own name, so a menu item can say "Open in Lightroom
-    /// Classic" when that is genuinely what will open.
-    static var installedName: String? {
-        installedApplication().map {
-            FileManager.default.displayName(atPath: $0.path)
-                .replacingOccurrences(of: ".app", with: "")
-        }
-    }
+    static var isInstalled: Bool { resolved != nil }
 
     /// Opens `url` in Lightroom. Falls back to the default handler if
     /// Lightroom has gone away since the menu was built.

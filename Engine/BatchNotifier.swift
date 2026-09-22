@@ -14,9 +14,7 @@ enum BatchNotifier {
     private static var hasRequestedAuthorization = false
 
     static func batchFinished(
-        done: Int,
-        skipped: Int,
-        failed: Int,
+        counts: Pipeline.Counts,
         notify: Bool,
         revealFolder: URL?
     ) {
@@ -41,7 +39,10 @@ enum BatchNotifier {
 
             let content = UNMutableNotificationContent()
             content.title = "Fujify finished"
-            content.body = summary(done: done, skipped: skipped, failed: failed)
+            // outcomeSummary is empty only for an empty batch, which cannot
+            // reach here in practice; the fallback keeps the body non-empty.
+            let body = counts.outcomeSummary
+            content.body = body.isEmpty ? "Nothing to do" : body
             content.sound = .default
 
             let request = UNNotificationRequest(
@@ -51,14 +52,5 @@ enum BatchNotifier {
             )
             try? await center.add(request)
         }
-    }
-
-    /// "2,046 done · 9 skipped · 2 failed", leaving out whatever is zero.
-    static func summary(done: Int, skipped: Int, failed: Int) -> String {
-        var parts: [String] = []
-        if done > 0 { parts.append("\(done.formatted()) done") }
-        if skipped > 0 { parts.append("\(skipped.formatted()) skipped") }
-        if failed > 0 { parts.append("\(failed.formatted()) failed") }
-        return parts.isEmpty ? "Nothing to do" : parts.joined(separator: " · ")
     }
 }

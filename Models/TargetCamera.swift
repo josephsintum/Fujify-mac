@@ -61,6 +61,30 @@ struct TargetCamera: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - The tags Fujify writes
+
+extension TargetCamera {
+    /// Every tag Fujify injects, in the order exiftool receives them.
+    ///
+    /// One list, because three places need it: `ExifTool.inject` writes it,
+    /// the Inspector highlights it, and the Add Camera sheet previews it.
+    /// They used to spell it out separately and had already drifted — the
+    /// preview promised four tags while the writer wrote five.
+    /// See docs/PIPELINE-CONTRACT.md §3.
+    var injectedTags: [(name: String, value: String)] {
+        [
+            ("CameraProfilesMake", make),
+            ("CameraProfilesModel", model),
+            ("CameraProfilesUniqueCameraModel", uniqueCameraModel),
+            ("CameraProfilesCameraRawProfile", "True"),
+            ("UniqueCameraModel", uniqueCameraModel),
+        ]
+    }
+
+    /// The names alone. They do not vary by target, so any target answers.
+    static let injectedTagNames: Set<String> = Set(xT5.injectedTags.map(\.name))
+}
+
 // MARK: - Built-ins
 
 extension TargetCamera {

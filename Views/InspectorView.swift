@@ -23,7 +23,6 @@ struct InspectorView: View {
     @State private var isLoading = false
     @State private var loadError: String?
     @State private var filter = ""
-    @State private var showRawOutput = false
 
     var body: some View {
         Group {
@@ -34,7 +33,6 @@ struct InspectorView: View {
             }
         }
         .task(id: item?.id) {
-            showRawOutput = false
             await loadMetadata()
         }
         // The output file only exists once processing finishes, so reload
@@ -60,7 +58,7 @@ struct InspectorView: View {
                         target: cameraStore.selectedTarget,
                         onRetry: { pipeline.retry([item.id]) },
                         onReprocess: { pipeline.reprocess([item.id]) },
-                        onChooseFolder: { Task { await chooseOutputFolder() } }
+                        onChooseFolder: { chooseOutputFolder() }
                     )
                     .padding(.horizontal, 12)
                     .padding(.top, 10)
@@ -96,17 +94,15 @@ struct InspectorView: View {
                     .truncationMode(.middle)
                     .textSelection(.enabled)
 
-                if !cameraLine(item).isEmpty {
-                    Text(cameraLine(item))
+                let camera = cameraLine(item)
+                if !camera.isEmpty {
+                    Text(camera)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
 
-                Text(
-                    (item.url.deletingLastPathComponent().path as NSString)
-                        .abbreviatingWithTildeInPath
-                )
+                Text(item.url.deletingLastPathComponent().displayPath)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -165,13 +161,7 @@ struct InspectorView: View {
 
     /// The tags Fujify writes, highlighted so the user can see the trick
     /// worked without knowing which tags to look for.
-    private static let injectedTagNames: Set<String> = [
-        "CameraProfilesMake",
-        "CameraProfilesModel",
-        "CameraProfilesUniqueCameraModel",
-        "CameraProfilesCameraRawProfile",
-        "UniqueCameraModel",
-    ]
+    private static let injectedTagNames = TargetCamera.injectedTagNames
 
     private var emptyState: some View {
         VStack(spacing: 8) {
@@ -248,13 +238,9 @@ struct InspectorView: View {
     }
 
     @MainActor
-    private func chooseOutputFolder() async {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.message = "Choose output folder for processed DNGs"
-        panel.prompt = "Choose"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    private func chooseOutputFolder() {
+        guard let url = FolderPicker.choose(message: FolderPicker.outputFolderMessage)
+        else { return }
         pipeline.outputFolder = url
         if let item { pipeline.retry([item.id]) }
     }
@@ -465,7 +451,7 @@ private struct ResultCard: View {
 
     private var outputDescription: String {
         if let output = item.outputURL {
-            return (output.path as NSString).abbreviatingWithTildeInPath
+            return output.displayPath
         }
         if case .failed = item.status { return "Not created" }
         if case .skipped = item.status { return "Not created" }

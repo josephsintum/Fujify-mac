@@ -16,7 +16,7 @@ struct GeneralSettings: View {
                         Button("In place") { pipeline.defaultOutputFolder = nil }
                         Divider()
                         Button("Choose Folder…") {
-                            Task { await chooseDefaultFolder() }
+                            chooseDefaultFolder()
                         }
                     }
                     .fixedSize()
@@ -62,17 +62,13 @@ struct GeneralSettings: View {
 
     private var defaultFolderLabel: String {
         guard let folder = pipeline.defaultOutputFolder else { return "In place" }
-        return (folder.path as NSString).abbreviatingWithTildeInPath
+        return folder.displayPath
     }
 
     @MainActor
-    private func chooseDefaultFolder() async {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.message = "Choose where new batches are saved"
-        panel.prompt = "Choose"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    private func chooseDefaultFolder() {
+        guard let url = FolderPicker.choose(message: "Choose where new batches are saved")
+        else { return }
         pipeline.defaultOutputFolder = url
         // An empty queue means no batch is in flight, so applying the new
         // default straight away is what the user expects.

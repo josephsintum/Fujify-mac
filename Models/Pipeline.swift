@@ -108,6 +108,21 @@ final class Pipeline {
         var total: Int { pending + processing + done + skipped + failed }
         /// Everything that will not be worked on again without user action.
         var settled: Int { done + skipped + failed }
+        /// What Retry and Retry All would pick up.
+        var retryable: Int { skipped + failed }
+
+        /// "2,046 done · 9 skipped · 2 failed", leaving out whatever is zero.
+        ///
+        /// The status bar and the end-of-batch notification both describe the
+        /// same result, so they read it from the same place; they used to
+        /// build the string separately and could word it differently.
+        var outcomeSummary: String {
+            var parts: [String] = []
+            if done > 0 { parts.append("\(done.formatted()) done") }
+            if skipped > 0 { parts.append("\(skipped.formatted()) skipped") }
+            if failed > 0 { parts.append("\(failed.formatted()) failed") }
+            return parts.joined(separator: " · ")
+        }
     }
 
     var counts: Counts {
@@ -123,8 +138,6 @@ final class Pipeline {
         }
         return counts
     }
-
-    var completedCount: Int { counts.settled }
 
     /// How many queued DNGs would be rewritten in place if the batch started
     /// now. Drives the confirmation in §7; zero means nothing to ask about.
@@ -271,9 +284,7 @@ final class Pipeline {
     private func announceBatchFinished() {
         let counts = counts
         BatchNotifier.batchFinished(
-            done: counts.done,
-            skipped: counts.skipped,
-            failed: counts.failed,
+            counts: counts,
             notify: notifyOnFinish,
             revealFolder: revealOnFinish && counts.done > 0 ? outputFolder : nil
         )

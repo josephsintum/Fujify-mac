@@ -89,6 +89,8 @@ let monogramSegmentFraction: CGFloat = 0.235
 let monogramStripeInset: CGFloat = 0.19
 /// A one-pixel band disappears at 16px, so it never goes below two.
 let monogramStripeMinHeight: CGFloat = 2
+/// Band thickness as a fraction of the canvas, before the minimum applies.
+let monogramStripeHeightFraction: CGFloat = 0.07
 
 // MARK: - Renderer
 
@@ -200,7 +202,6 @@ private func drawText(
 
 /// Draws the three-colour accent band and returns its top edge, so the
 /// monogram can be placed in the space above it.
-@discardableResult
 private func drawStripe(
     in size: CGFloat,
     platform: Platform,
@@ -219,7 +220,10 @@ private func drawStripe(
         segmentWidth = max((squareRect.width * monogramSegmentFraction).rounded(), 1)
         let totalWidth = segmentWidth * CGFloat(stripeColors.count)
         originX = (squareRect.midX - totalWidth / 2).rounded()
-        height = max((size * 0.07).rounded(), monogramStripeMinHeight)
+        height = max(
+            (size * monogramStripeHeightFraction).rounded(),
+            monogramStripeMinHeight
+        )
         originY = (squareRect.minY + squareRect.height * monogramStripeInset).rounded()
     } else {
         let totalWidth = size * platform.stripeWidthFraction

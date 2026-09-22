@@ -13,12 +13,6 @@ struct ConverterSettings: View {
 
     @State private var isRechecking = false
 
-    private static let adobeDownload = URL(
-        string: "https://helpx.adobe.com/camera-raw/using/adobe-dng-converter.html"
-    )!
-
-    private static let dnglabSite = URL(string: "https://github.com/dnglab/dnglab")!
-
     var body: some View {
         @Bindable var toolLocator = toolLocator
 
@@ -58,13 +52,13 @@ struct ConverterSettings: View {
                     "Adobe DNG Converter",
                     tool: toolLocator.adobeDngConverter,
                     detail: "Widest camera support, including newer bodies. Free from Adobe.",
-                    missingAction: ("Download from Adobe", Self.adobeDownload)
+                    missingAction: ("Download from Adobe", ExternalLinks.adobeDngConverter)
                 )
                 toolRow(
                     "dnglab",
                     tool: toolLocator.dnglab,
                     detail: "Ships with Fujify. Doesn't support some newer bodies yet.",
-                    missingAction: ("Get dnglab", Self.dnglabSite)
+                    missingAction: ("Get dnglab", ExternalLinks.dnglab)
                 )
                 toolRow(
                     "exiftool",
@@ -135,7 +129,7 @@ struct ConverterSettings: View {
         switch tool.source {
         case .bundled: return "Built in · \(tool.version)"
         case .installed(let url):
-            return "\(tool.version) · \((url.path as NSString).abbreviatingWithTildeInPath)"
+            return "\(tool.version) · \(url.displayPath)"
         }
     }
 

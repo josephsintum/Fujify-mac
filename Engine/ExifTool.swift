@@ -127,13 +127,7 @@ struct ExifTool {
     /// exiftool to refuse the write entirely. Discovered during CLI testing
     /// on real Sony files; see docs/PIPELINE-CONTRACT.md §3.1.
     func inject(target: TargetCamera, into dng: URL) async throws {
-        var arguments = [
-            "-CameraProfilesMake=\(target.make)",
-            "-CameraProfilesModel=\(target.model)",
-            "-CameraProfilesUniqueCameraModel=\(target.uniqueCameraModel)",
-            "-CameraProfilesCameraRawProfile=True",
-            "-UniqueCameraModel=\(target.uniqueCameraModel)",
-        ]
+        var arguments = target.injectedTags.map { "-\($0.name)=\($0.value)" }
 
         arguments.append(contentsOf: await stashArguments(for: target, in: dng))
 

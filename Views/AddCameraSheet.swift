@@ -17,12 +17,6 @@ struct AddCameraSheet: View {
     @State private var problem: String?
     @FocusState private var modelFocused: Bool
 
-    /// Adobe's list of camera names Camera Raw knows, which is the same set
-    /// Lightroom will match against.
-    private static let adobeCameraList = URL(
-        string: "https://helpx.adobe.com/camera-raw/kb/camera-raw-plug-supported-cameras.html"
-    )!
-
     /// What will be written, updating as the user types, so there is no
     /// guessing about what "adding a camera" actually does.
     private var preview: TargetCamera {
@@ -43,7 +37,7 @@ struct AddCameraSheet: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-                Link(destination: Self.adobeCameraList) {
+                Link(destination: ExternalLinks.adobeCameraList) {
                     Label("Adobe's supported cameras list", systemImage: "arrow.up.right")
                         .font(.callout)
                 }
@@ -101,10 +95,9 @@ struct AddCameraSheet: View {
                 .foregroundStyle(.secondary)
 
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 2) {
-                tagRow("CameraProfilesMake", preview.make)
-                tagRow("CameraProfilesModel", preview.model)
-                tagRow("CameraProfilesUniqueCameraModel", preview.uniqueCameraModel)
-                tagRow("UniqueCameraModel", preview.uniqueCameraModel)
+                ForEach(preview.injectedTags, id: \.name) { tag in
+                    tagRow(tag.name, tag.value)
+                }
             }
         }
         .padding(10)
