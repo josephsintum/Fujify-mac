@@ -163,9 +163,13 @@ entry is repointed:
 - **otherwise** a fresh packet, with fresh padding of its own so the next
   pass fits in place again, is appended at EOF and tag `0x02BC` is
   repointed at it;
-- `UniqueCameraModel` is overwritten in its existing slot when the new
-  string is no longer than the old, and is written inside the 12-byte IFD
-  entry when it is four bytes or fewer, as TIFF requires;
+- `UniqueCameraModel` is written **inside the 12-byte IFD entry whenever the
+  value is four bytes or fewer**, as TIFF requires, whatever the old entry
+  did — that test comes first, because a short value left out of line in a
+  roomier old slot sets a count of four or less beside an offset, and a
+  reader hands back the first bytes of that offset as the model name.
+  Otherwise it is overwritten in its existing slot when the new string is no
+  longer than the old, and appended at EOF when it is not;
 - **IFD0 itself is relocated** — copied to EOF entry for entry, offsets and
   next-IFD pointer intact, and the header's IFD0 pointer repointed — only
   when one of the two tags does not exist yet and so needs a new entry.
