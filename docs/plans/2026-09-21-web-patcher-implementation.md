@@ -1543,11 +1543,24 @@ describe('planPatch — the append fallback', () => {
     expect(entry.dataOffset).toBeGreaterThanOrEqual(buf.byteLength);
   });
 
-  it('leaves the appended packet with padding, so a third pass fits in place', () => {
+  it('leaves the appended packet with padding, so a later pass fits it in place', () => {
+    // Pass 1 appended a fresh packet with 2048 bytes of padding. Pass 2 must therefore
+    // rewrite the XMP *in place* — its entry's data offset must not move.
+    //
+    // Do NOT assert `plan.append === null` here: pass 1 appended UniqueCameraModel into
+    // a slot of exactly 14 bytes ('Fujifilm X-T5\0') with no slack, so a 16-byte
+    // 'Fujifilm X100VI\0' cannot fit and legitimately appends again. That append is the
+    // model string alone, not a second XMP packet — which is the property under test.
     const once = patched(synthDng({ xmp: xmpPacket(0) }));
+    const xmpBefore = readIfd0(once, readHeader(once)).entries.get(TAG.XMP)!;
     const plan = planPatch(once, X100VI);
-    expect(plan.append).toBeNull();
-    expect(plan.outputLength).toBe(once.byteLength);
+    const twice = applyPlan(once, plan);
+    const xmpAfter = readIfd0(twice, readHeader(twice)).entries.get(TAG.XMP)!;
+
+    expect(xmpAfter.dataOffset).toBe(xmpBefore.dataOffset);
+    expect(xmpAfter.byteLength).toBe(xmpBefore.byteLength);
+    expect(plan.append?.byteLength ?? 0).toBeLessThan(32);
+    expect(readDng(twice).profiles.model).toBe('X100VI');
   });
 });
 
