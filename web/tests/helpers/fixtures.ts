@@ -24,6 +24,16 @@ export const hasExiftool = (() => {
   }
 })();
 
+/** Optional: the golden XMP well-formedness check skips loudly without it. */
+export const hasXmllint = (() => {
+  try {
+    execFileSync('xmllint', ['--version'], { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 export const goldenReady = hasFixture && hasExiftool;
 
 export const skipReason = !hasFixture

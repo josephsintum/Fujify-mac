@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlan, isAlreadyTagged, planPatch } from '../../src/dng/patch';
+import type { PatchEdit, PatchPlan } from '../../src/dng/patch';
+import { applyPlan, isAlreadyTagged, planPatch, validatePlan } from '../../src/dng/patch';
 import { hasStash, readDng } from '../../src/dng/identity';
 import { NotADngError, TAG, readHeader, readIfd0, view } from '../../src/dng/tiff';
 import { synthDng, xmpPacket } from '../helpers/synth';
@@ -187,6 +188,100 @@ describe('planPatch — adding a missing tag', () => {
     const header = readHeader(out);
     const ifd = readIfd0(out, header);
     expect(view(out).getUint32(ifd.nextIfdPointerOffset, header.littleEndian)).toBe(sentinel);
+  });
+});
+
+describe('planPatch — a UniqueCameraModel short enough to sit inside the IFD entry', () => {
+  // TIFF stores a value of 4 bytes or fewer INSIDE the 12-byte entry, and every reader
+  // — readIfd0 included — decides that from the count alone. Setting a short count
+  // beside an offset makes the reader hand back the offset's bytes as the model name.
+  // Contract §2 derives "Fujifilm " + model so this is unreachable today, but planPatch
+  // is public and plan 2 feeds it targets out of localStorage.
+  const ucmEntry = (out: Uint8Array) =>
+    readIfd0(out, readHeader(out)).entries.get(TAG.UniqueCameraModel)!;
+  const target = (uniqueCameraModel: string) => ({ make: 'FUJIFILM', model: 'M', uniqueCameraModel });
+
+  // 1, 3 and 4 encoded bytes once the NUL terminator is counted.
+  for (const ucm of ['', 'XT', 'X-T']) {
+    it(`round-trips ${JSON.stringify(ucm)} (${ucm.length + 1} bytes) with no exiftool involved`, () => {
+      const out = patched(synthDng(), target(ucm));
+      const entry = ucmEntry(out);
+      expect(entry.inline).toBe(true);
+      expect(entry.dataOffset).toBe(entry.entryOffset + 8);
+      expect(entry.count).toBe(ucm.length + 1);
+      expect(readDng(out).identity.uniqueCameraModel).toBe(ucm);
+    });
+  }
+
+  it('keeps a 5-byte value out of line — the other side of the boundary', () => {
+    const out = patched(synthDng(), target('ABCD'));
+    expect(ucmEntry(out).inline).toBe(false);
+    expect(readDng(out).identity.uniqueCameraModel).toBe('ABCD');
+  });
+
+  it('goes inline even when the old out-of-line slot was big enough to reuse', () => {
+    const buf = synthDng({ uniqueCameraModel: 'A very long original camera model name' });
+    const out = patched(buf, target('X-T'));
+    expect(ucmEntry(out).inline).toBe(true);
+    expect(readDng(out).identity.uniqueCameraModel).toBe('X-T');
+  });
+
+  it('goes inline on the relocating path too', () => {
+    const buf = synthDng({ uniqueCameraModel: null });
+    const plan = planPatch(buf, target('X-T'));
+    expect(plan.relocatedIfd).toBe(true);
+    const out = applyPlan(buf, plan);
+    expect(ucmEntry(out).inline).toBe(true);
+    expect(readDng(out).identity.uniqueCameraModel).toBe('X-T');
+  });
+});
+
+describe('validatePlan — never move a byte, enforced', () => {
+  // The guarantee the whole module rests on. Without this check a regression in the
+  // `bytes.byteLength <= existing.byteLength` guard would overwrite a neighbouring
+  // tag's data and every other test here would still pass, because they all derive
+  // what "untouched" means from plan.edits itself.
+  const buf = synthDng();
+  const plan = (edits: PatchEdit[], append: Uint8Array | null = null): PatchPlan => ({
+    edits,
+    append,
+    outputLength: buf.byteLength + (append?.byteLength ?? 0),
+    relocatedIfd: false,
+  });
+  const at = (offset: number, length: number) => ({ offset, bytes: new Uint8Array(length) });
+
+  it('accepts what planPatch produces', () => {
+    expect(() => validatePlan(buf, planPatch(buf, XT5))).not.toThrow();
+  });
+
+  it('accepts edits that abut without overlapping, in either order', () => {
+    expect(() => validatePlan(buf, plan([at(100, 10), at(110, 10)]))).not.toThrow();
+    expect(() => validatePlan(buf, plan([at(110, 10), at(100, 10)]))).not.toThrow();
+  });
+
+  it('rejects an edit that runs past the original EOF', () => {
+    expect(() => validatePlan(buf, plan([at(buf.byteLength - 4, 8)]))).toThrow(/outside the original file/);
+  });
+
+  it('rejects an edit that starts past the original EOF', () => {
+    expect(() => validatePlan(buf, plan([at(buf.byteLength + 8, 4)]))).toThrow(/outside the original file/);
+  });
+
+  it('rejects a negative offset', () => {
+    expect(() => validatePlan(buf, plan([at(-1, 4)]))).toThrow(/outside the original file/);
+  });
+
+  it('rejects two edits that overlap', () => {
+    expect(() => validatePlan(buf, plan([at(100, 10), at(105, 10)]))).toThrow(/overlap/);
+    expect(() => validatePlan(buf, plan([at(105, 10), at(100, 10)]))).toThrow(/overlap/);
+  });
+
+  it('rejects an outputLength that does not account for the append', () => {
+    const append = new Uint8Array(16);
+    expect(() => validatePlan(buf, { edits: [], append, outputLength: buf.byteLength, relocatedIfd: false }))
+      .toThrow(/outputLength/);
+    expect(() => validatePlan(buf, { edits: [], append: null, outputLength: buf.byteLength + 1, relocatedIfd: false }))
+      .toThrow(/outputLength/);
   });
 });
 

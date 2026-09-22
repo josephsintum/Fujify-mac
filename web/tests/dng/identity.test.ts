@@ -121,5 +121,8 @@ describe('readXmpProperty', () => {
 
   it('does not match a property whose name merely ends with the one asked for', () => {
     expect(readXmpProperty('<x:NotMake>wrong</x:NotMake>', 'x:Make')).toBe('');
+    // Attribute form specifically: this is the branch carrying the (?<![\w:-])
+    // lookbehind, and an element-only input never reaches it.
+    expect(readXmpProperty('<rdf:Description x:NotMake="wrong">', 'x:Make')).toBe('');
   });
 });

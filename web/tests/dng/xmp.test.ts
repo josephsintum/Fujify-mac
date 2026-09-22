@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_PACKET, NS, fitPacket, freshPacket, rewriteXmp } from '../../src/dng/xmp';
-import { readXmpProperty } from '../../src/dng/identity';
+import { EMPTY_PACKET, NS, encodeEntities, fitPacket, freshPacket, rewriteXmp } from '../../src/dng/xmp';
+import { decodeEntities, readXmpProperty } from '../../src/dng/identity';
 import { xmpPacket } from '../helpers/synth';
 
 const XT5 = { make: 'FUJIFILM', model: 'X-T5', uniqueCameraModel: 'Fujifilm X-T5' };
@@ -139,6 +139,75 @@ describe('rewriteXmp', () => {
     expect(trailer).toBe("<?xpacket end='w'?>");
   });
 
+  it('drops control bytes that XML 1.0 cannot represent at all', () => {
+    // readAscii passes any non-NUL byte through, so a stray 0x0B in the source Make
+    // reaches the stash. XML has no escape for it, so leaving it in makes a strict
+    // parser reject the ENTIRE packet — taking the file's own crs develop settings,
+    // xmpMM history, ratings and keywords with it, not just our block.
+    const dirty = { make: 'SO\x0bNY', model: 'ILCE\x01-7S', uniqueCameraModel: 'Sony\x1f ILCE-7S' };
+    const { body } = rewriteXmp(xmpPacket(4096), XT5, dirty, false);
+    expect(body).not.toMatch(/[\x00-\x08\x0B\x0C\x0E-\x1F]/);
+    expect(readXmpProperty(body, 'fujify:OriginalMake')).toBe('SONY');
+    expect(readXmpProperty(body, 'fujify:OriginalModel')).toBe('ILCE-7S');
+    assertBalanced(body);
+  });
+
+  it('finds the end of the open tag when an attribute value contains a >', () => {
+    // '>' is legal unescaped inside an attribute value. Scanning for the first '>'
+    // truncates the open tag, so the xmlns check misses a declaration the tag already
+    // carries and re-declares it — a duplicate attribute, which xmllint rejects.
+    const withGt =
+      `<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>\n` +
+      `<x:xmpmeta xmlns:x="adobe:ns:meta/">\n` +
+      ` <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n` +
+      `  <rdf:Description rdf:about="" photoshop:Headline="a > b" xmlns:photoshop="${NS.photoshop}">\n` +
+      `  </rdf:Description>\n </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end='w'?>`;
+    const { body } = rewriteXmp(withGt, XT5, SONY, false);
+
+    for (const prefix of Object.keys(NS)) {
+      expect(body.match(new RegExp(`xmlns:${prefix}=`, 'g')), prefix).toHaveLength(1);
+    }
+    expect(body).toContain('photoshop:Headline="a > b"');
+    expect(readXmpProperty(body, 'stCamera:Model')).toBe('X-T5');
+    assertBalanced(body);
+  });
+
+  it('strips an attribute-form fujify:TargetModel, which would otherwise survive', () => {
+    // readXmpProperty prefers the element form, so the reader here would look right —
+    // but exiftool lists BOTH values with the stale attribute first, and that is what
+    // verify-dng.sh and the macOS app read.
+    const attrForm =
+      `<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>\n` +
+      `<x:xmpmeta xmlns:x="adobe:ns:meta/">\n` +
+      ` <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n` +
+      `  <rdf:Description rdf:about="" xmlns:fujify="${NS.fujify}" fujify:TargetModel="STALE">\n` +
+      `  </rdf:Description>\n </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end='w'?>`;
+    const { body } = rewriteXmp(attrForm, X100VI, SONY, false);
+
+    expect(body).not.toContain('STALE');
+    expect(body.match(/fujify:TargetModel/g)).toHaveLength(2); // the element's open and close tags
+    expect(readXmpProperty(body, 'fujify:TargetModel')).toBe('X100VI');
+    assertBalanced(body);
+  });
+
+  it('is idempotent with keepStash false, rather than accumulating stashes', () => {
+    // patch.ts always passes hasStash(info), so this state is unreachable through it.
+    // Closing it here is cheaper than the test that would otherwise have to guard it.
+    const once = rewriteXmp(xmpPacket(4096), XT5, SONY, false);
+    const twice = rewriteXmp(once.body, X100VI, SONY, false);
+    for (const name of ['OriginalMake', 'OriginalModel', 'OriginalUniqueCameraModel', 'Version']) {
+      expect(twice.body.match(new RegExp(`<fujify:${name}>`, 'g')), name).toHaveLength(1);
+    }
+    assertBalanced(twice.body);
+  });
+
+  it('re-emits fujify:Version on a re-tag, as mac/Engine/ExifTool.swift does', () => {
+    const once = rewriteXmp(xmpPacket(4096), XT5, SONY, false);
+    const twice = rewriteXmp(once.body, X100VI, XT5, true);
+    expect(twice.body.match(/<fujify:Version>/g)).toHaveLength(1);
+    expect(readXmpProperty(twice.body, 'fujify:Version')).toBe('1');
+  });
+
   it('rejects a packet with no x:xmpmeta', () => {
     expect(() => rewriteXmp('<not-xmp/>', XT5, SONY, false)).toThrow(/xmpmeta/);
   });
@@ -205,4 +274,22 @@ describe('structural well-formedness', () => {
     const twice = rewriteXmp(once.body, X100VI, SONY, true);
     assertBalanced(twice.body);
   });
+});
+
+describe('entity encoding', () => {
+  // encodeEntities replaces '&' FIRST and decodeEntities replaces '&amp;' LAST. That
+  // ordering is the whole reason the pair round-trips; swap either and '&lt;' in a
+  // camera name comes back as '<'. Nothing asserted it until now.
+  const cases = [
+    '&', '<', '>', '"', "'",
+    '&amp;', '&lt;', '&gt;', '&quot;', '&apos;', '&#39;',
+    '&amp', ';', '#39', '&amp;lt;', '&&&', '<&>"',
+    'Fujifilm X-T5',
+  ];
+
+  for (const s of cases) {
+    it(`round-trips ${JSON.stringify(s)}`, () => {
+      expect(decodeEntities(encodeEntities(s))).toBe(s);
+    });
+  }
 });
