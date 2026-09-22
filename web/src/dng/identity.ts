@@ -73,7 +73,11 @@ export function readXmpProperty(xml: string, qname: string): string {
 function firstProfileItem(packet: string): string {
   const block = packet.match(/<photoshop:CameraProfiles>([\s\S]*?)<\/photoshop:CameraProfiles>/);
   if (!block?.[1]) return '';
-  const li = block[1].match(/<rdf:li[\s\S]*?(?:\/>|<\/rdf:li>)/);
+  // Two alternatives, self-closing tried first. A single lazy terminator of
+  // `(?:\/>|<\/rdf:li>)` would stop at the first `/>` in the item — including one
+  // belonging to a nested self-closing child — and silently cut every field after
+  // it out of the extraction window, so a present stCamera:Make reads as absent.
+  const li = block[1].match(/<rdf:li\b[^>]*\/>|<rdf:li\b[^>]*>[\s\S]*?<\/rdf:li>/);
   return li?.[0] ?? '';
 }
 

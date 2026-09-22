@@ -20,6 +20,24 @@ const TAGGED = `   <photoshop:CameraProfiles>
    <fujify:TargetModel>X-T5</fujify:TargetModel>
 `;
 
+const TAGGED_WITH_NESTED_CHILD = `   <photoshop:CameraProfiles>
+    <rdf:Seq>
+     <rdf:li rdf:parseType="Resource">
+      <stCamera:Embedded rdf:parseType="Resource"/>
+      <stCamera:CameraRawProfile>True</stCamera:CameraRawProfile>
+      <stCamera:Make>FUJIFILM</stCamera:Make>
+      <stCamera:Model>X-T5</stCamera:Model>
+      <stCamera:UniqueCameraModel>Fujifilm X-T5</stCamera:UniqueCameraModel>
+     </rdf:li>
+    </rdf:Seq>
+   </photoshop:CameraProfiles>
+   <fujify:OriginalMake>SONY</fujify:OriginalMake>
+   <fujify:OriginalModel>ILCE-7S</fujify:OriginalModel>
+   <fujify:OriginalUniqueCameraModel>Sony ILCE-7S</fujify:OriginalUniqueCameraModel>
+   <fujify:Version>1</fujify:Version>
+   <fujify:TargetModel>X-T5</fujify:TargetModel>
+`;
+
 describe('readDng', () => {
   it('reads the camera identity from IFD0', () => {
     const info = readDng(synthDng());
@@ -70,6 +88,13 @@ describe('readDng', () => {
     const info = readDng(synthDng({ littleEndian: false, make: 'CANON', model: 'EOS R6' }));
     expect(info.identity.make).toBe('CANON');
     expect(info.identity.model).toBe('EOS R6');
+  });
+
+  it('reads profile tags when rdf:li contains nested self-closing children', () => {
+    const info = readDng(synthDng({ xmp: xmpPacket(512, TAGGED_WITH_NESTED_CHILD), uniqueCameraModel: 'Fujifilm X-T5' }));
+    expect(info.profiles.make).toBe('FUJIFILM');
+    expect(info.profiles.model).toBe('X-T5');
+    expect(info.profiles.uniqueCameraModel).toBe('Fujifilm X-T5');
   });
 });
 
