@@ -7,6 +7,28 @@ const XT5 = { make: 'FUJIFILM', model: 'X-T5', uniqueCameraModel: 'Fujifilm X-T5
 const X100VI = { make: 'FUJIFILM', model: 'X100VI', uniqueCameraModel: 'Fujifilm X100VI' };
 const SONY = { make: 'SONY', model: 'ILCE-7S', uniqueCameraModel: 'Sony ILCE-7S' };
 
+/**
+ * Asserts an XML fragment is tag-balanced: every element name opened is closed the
+ * same number of times. Self-closing tags (`<.../>`) and processing instructions
+ * (`<?...?>`) neither open nor close anything, so they are excluded — a PI never
+ * matches this tag pattern at all, since `<?` is not `<` followed by a name.
+ */
+function assertBalanced(xml: string): void {
+  const tagRe = /<\/?([A-Za-z_][\w.-]*:[\w.-]+|[A-Za-z_][\w.-]*)\b[^>]*?(\/?)>/g;
+  const counts = new Map<string, number>();
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(xml))) {
+    const name = m[1]!;
+    const selfClosing = m[2] === '/';
+    if (selfClosing) continue;
+    const isClosing = m[0].startsWith('</');
+    counts.set(name, (counts.get(name) ?? 0) + (isClosing ? -1 : 1));
+  }
+  for (const [name, count] of counts) {
+    expect(count, `tag <${name}> is unbalanced (net ${count})`).toBe(0);
+  }
+}
+
 describe('rewriteXmp', () => {
   it('writes the four profile values and the five stash values', () => {
     const { body } = rewriteXmp(xmpPacket(4096), XT5, SONY, false);
@@ -37,6 +59,37 @@ describe('rewriteXmp', () => {
     );
     const { body } = rewriteXmp(declared, XT5, SONY, false);
     expect(body.match(/xmlns:photoshop=/g)).toHaveLength(1);
+  });
+
+  it('declares a namespace on the element being patched even when only a sibling rdf:Description declares it', () => {
+    // Two siblings; only the SECOND declares xmlns:photoshop. rewriteXmp always
+    // patches the FIRST rdf:Description, so a document-wide check would see the
+    // sibling's declaration, skip declaring it on the first element, and emit
+    // photoshop:CameraProfiles there with the prefix unbound — malformed XML.
+    const twoSiblings =
+      `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n` +
+      `<x:xmpmeta xmlns:x="adobe:ns:meta/">\n` +
+      ` <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n` +
+      `  <rdf:Description rdf:about="">\n` +
+      `  </rdf:Description>\n` +
+      `  <rdf:Description rdf:about="" xmlns:photoshop="${NS.photoshop}">\n` +
+      `  </rdf:Description>\n` +
+      ` </rdf:RDF>\n` +
+      `</x:xmpmeta>\n` +
+      `<?xpacket end='w'?>`;
+    const { body } = rewriteXmp(twoSiblings, XT5, SONY, false);
+
+    // Assert on the FIRST element's own open tag, not the whole body — counting
+    // occurrences in the whole body would pass against the old, buggy code too.
+    const firstDescStart = body.indexOf('<rdf:Description');
+    const firstDescOpenEnd = body.indexOf('>', firstDescStart);
+    const firstOpenTag = body.slice(firstDescStart, firstDescOpenEnd + 1);
+    expect(firstOpenTag).toContain(`xmlns:photoshop="${NS.photoshop}"`);
+
+    // photoshop:CameraProfiles is inserted into the first Description; sanity check
+    // it actually landed inside the element we just asserted has the binding.
+    const firstDescClose = body.indexOf('</rdf:Description>');
+    expect(body.slice(firstDescOpenEnd, firstDescClose)).toContain('<photoshop:CameraProfiles>');
   });
 
   it('keeps the trailer, which declares the packet writable in place', () => {
@@ -136,5 +189,20 @@ describe('freshPacket', () => {
     const text = new TextDecoder().decode(out);
     expect(out.byteLength).toBeGreaterThan(body.length + trailer.length + 2000);
     expect(text.endsWith(trailer)).toBe(true);
+  });
+});
+
+describe('structural well-formedness', () => {
+  it('produces a tag-balanced body, from a self-closing rdf:Description and across a two-pass rewrite', () => {
+    const selfClosing =
+      `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n` +
+      `<x:xmpmeta xmlns:x="adobe:ns:meta/">\n <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n` +
+      `  <rdf:Description rdf:about=""/>\n </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end='w'?>`;
+    assertBalanced(rewriteXmp(selfClosing, XT5, SONY, false).body);
+
+    const once = rewriteXmp(xmpPacket(4096), XT5, SONY, false);
+    assertBalanced(once.body);
+    const twice = rewriteXmp(once.body, X100VI, SONY, true);
+    assertBalanced(twice.body);
   });
 });

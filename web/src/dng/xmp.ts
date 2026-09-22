@@ -71,10 +71,17 @@ export function rewriteXmp(
     body = `${body.slice(0, descOpenEnd - 1)}>\n  </rdf:Description>${body.slice(descOpenEnd + 1)}`;
   }
 
-  // Declare only what is missing, so we never duplicate Adobe's own declarations.
+  // Declare only what is missing FROM THIS ELEMENT, so we never duplicate a
+  // declaration already on it. XMP allows sibling rdf:Description elements, each
+  // scoping its own xmlns declarations to itself — a sibling's declaration does not
+  // bind the element we are patching, so the check must be scoped to this element's
+  // own open tag, not the whole packet body, or we can emit an element that uses an
+  // unbound prefix.
+  const descOpenEndForNs = body.indexOf('>', descOpen);
+  const openTag = body.slice(descOpen, descOpenEndForNs + 1);
   let decls = '';
   for (const [prefix, uri] of Object.entries(NS)) {
-    if (!new RegExp(`xmlns:${prefix}\\s*=`).test(body)) decls += `\n    xmlns:${prefix}="${uri}"`;
+    if (!new RegExp(`xmlns:${prefix}\\s*=`).test(openTag)) decls += `\n    xmlns:${prefix}="${uri}"`;
   }
   if (decls) {
     const at = descOpen + '<rdf:Description'.length;
