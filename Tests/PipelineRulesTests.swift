@@ -26,6 +26,68 @@ struct PipelineRulesTests {
         return items
     }
 
+    // MARK: Restoring the saved output folder
+
+    @Test("a saved output folder that still exists is restored")
+    func savedFolderIsRestored() throws {
+        let folder = URL.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let defaults = UserDefaults(suiteName: "fujify.tests.\(UUID().uuidString)")!
+        defaults.set(folder.path, forKey: "defaultOutputFolder")
+
+        let pipeline = Pipeline(toolLocator: ToolLocator(), defaults: defaults)
+        #expect(pipeline.defaultOutputFolder?.path == folder.path)
+        #expect(pipeline.outputFolder?.path == folder.path)
+    }
+
+    @Test("a saved folder that has gone away falls back to in place")
+    func missingSavedFolderFallsBack() {
+        // The real case is an external drive left unmounted. Restoring the
+        // path regardless meant the toolbar claimed the folder was fine and
+        // then every file in the batch failed at the write step.
+        let gone = URL.temporaryDirectory.appending(path: UUID().uuidString)
+        let defaults = UserDefaults(suiteName: "fujify.tests.\(UUID().uuidString)")!
+        defaults.set(gone.path, forKey: "defaultOutputFolder")
+
+        let pipeline = Pipeline(toolLocator: ToolLocator(), defaults: defaults)
+        #expect(pipeline.defaultOutputFolder == nil)
+        #expect(pipeline.outputFolder == nil)
+    }
+
+    @Test("a saved path that is now a file, not a folder, falls back too")
+    func savedPathThatIsAFileFallsBack() throws {
+        let file = URL.temporaryDirectory.appending(path: "\(UUID().uuidString).txt")
+        try Data().write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let defaults = UserDefaults(suiteName: "fujify.tests.\(UUID().uuidString)")!
+        defaults.set(file.path, forKey: "defaultOutputFolder")
+
+        let pipeline = Pipeline(toolLocator: ToolLocator(), defaults: defaults)
+        #expect(pipeline.outputFolder == nil)
+    }
+
+    // MARK: Outcome wording shared by the status bar and the notification
+
+    @Test("the outcome summary leaves out whatever is zero")
+    func outcomeSummaryOmitsZeros() {
+        #expect(Pipeline.Counts(done: 2046, skipped: 9, failed: 2).outcomeSummary
+            == "2,046 done · 9 skipped · 2 failed")
+        #expect(Pipeline.Counts(done: 5).outcomeSummary == "5 done")
+        #expect(Pipeline.Counts(skipped: 1, failed: 3).outcomeSummary
+            == "1 skipped · 3 failed")
+        #expect(Pipeline.Counts().outcomeSummary.isEmpty)
+    }
+
+    @Test("retryable counts the outcomes Retry All would pick up")
+    func retryableCountsSkippedAndFailed() {
+        let counts = Pipeline.Counts(pending: 4, processing: 1, done: 10, skipped: 2, failed: 3)
+        #expect(counts.retryable == 5)
+        #expect(counts.settled == 15)
+    }
+
     // MARK: The already-tagged skip (§9)
 
     @Test("only DNG input is worth checking, since a RAW is never tagged")

@@ -32,13 +32,30 @@ struct InspectorView: View {
                 emptyState
             }
         }
-        .task(id: item?.id) {
+        // One task, keyed on the two things that change the answer: which
+        // file is selected, and whether it has settled (the output DNG only
+        // exists once processing finishes).
+        //
+        // These were two separate .task modifiers, which meant every
+        // selection spawned two concurrent exiftool dumps of the same file,
+        // and each step of a running batch spawned another against a DNG the
+        // converter was still writing. Keying on `isSettled` rather than the
+        // whole status also stops the intermediate .processing steps from
+        // re-firing it and wiping the tag filter mid-type.
+        .task(id: InspectionKey(item)) {
             await loadMetadata()
         }
-        // The output file only exists once processing finishes, so reload
-        // when this item's status changes.
-        .task(id: item?.status) {
-            await loadMetadata()
+    }
+
+    /// What the Inspector's contents actually depend on.
+    private struct InspectionKey: Equatable {
+        let id: FileItem.ID?
+        let isSettled: Bool
+
+        @MainActor
+        init(_ item: FileItem?) {
+            id = item?.id
+            isSettled = item?.status.isSettled ?? false
         }
     }
 
@@ -350,11 +367,11 @@ private struct ResultCard: View {
             case .skipped(let reason):
                 switch reason {
                 case .unsupportedCamera:
-                    SettingsLink { Text("Set Up Converter…") }
+                    SettingsButton(title: "Set Up Converter…", tab: .converter)
                         .buttonStyle(.borderedProminent)
                     Button("Retry", action: onRetry)
                 case .dngOnlyMode:
-                    SettingsLink { Text("Open Settings…") }
+                    SettingsButton(title: "Open Settings…", tab: .converter)
                         .buttonStyle(.borderedProminent)
                     Button("Retry", action: onRetry)
                 case .alreadyTagged:

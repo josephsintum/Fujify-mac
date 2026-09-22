@@ -13,7 +13,7 @@ struct GeneralSettings: View {
             Section {
                 LabeledContent("Save new batches to") {
                     Menu(defaultFolderLabel) {
-                        Button("In place") { pipeline.defaultOutputFolder = nil }
+                        Button("In place") { setDefaultFolder(nil) }
                         Divider()
                         Button("Choose Folder…") {
                             chooseDefaultFolder()
@@ -69,6 +69,16 @@ struct GeneralSettings: View {
     private func chooseDefaultFolder() {
         guard let url = FolderPicker.choose(message: "Choose where new batches are saved")
         else { return }
+        setDefaultFolder(url)
+    }
+
+    /// Both menu items go through here so they agree. "Choose Folder…" used
+    /// to apply the change to the live batch destination as well while
+    /// "In place" only wrote the default, which left Settings reading
+    /// "In place" and the toolbar still reading the old folder — and the
+    /// next batch went to the folder.
+    @MainActor
+    private func setDefaultFolder(_ url: URL?) {
         pipeline.defaultOutputFolder = url
         // An empty queue means no batch is in flight, so applying the new
         // default straight away is what the user expects.

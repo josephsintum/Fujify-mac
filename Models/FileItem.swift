@@ -47,6 +47,9 @@ final class FileItem: Identifiable, Hashable {
 
         /// Failed and skipped items are both offered Retry.
         var isRetryable: Bool { isFailed || isSkipped }
+        /// Reached a resting state: nothing more will change without the
+        /// user asking for it, so the file on disk is safe to read.
+        var isSettled: Bool { isDone || isFailed || isSkipped }
 
         /// The one word the Status column leads with.
         var label: String {

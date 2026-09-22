@@ -62,7 +62,7 @@ struct ContentView: View {
         }
         .frame(minWidth: 820, minHeight: 480)
         .dropDestination(for: URL.self) { urls, _ in
-            Task { await pipeline.add(urls) }
+            Task { await addURLs(urls) }
             return true
         } isTargeted: {
             isDropTargeted = $0
@@ -80,16 +80,18 @@ struct ContentView: View {
             AddCameraSheet()
         }
         .sheet(isPresented: $showInPlaceConfirm) {
-            @Bindable var pipeline = pipeline
             InPlaceConfirmSheet(
                 dngCount: pipeline.pendingInPlaceDngCount,
                 rawCount: pendingCount - pipeline.pendingInPlaceDngCount,
-                suppressFutureAsks: Binding(
-                    get: { !pipeline.confirmInPlaceDng },
-                    set: { pipeline.confirmInPlaceDng = !$0 }
-                ),
-                onUpdateInPlace: startProcessing,
-                onChooseFolder: {
+                onUpdateInPlace: { suppress in
+                    // Only this button means "I am happy for Fujify to
+                    // rewrite DNGs in place without asking". Choosing a
+                    // folder routes around the in-place write entirely, so
+                    // it is not consent to do it silently next time.
+                    if suppress { pipeline.confirmInPlaceDng = false }
+                    startProcessing()
+                },
+                onChooseFolder: { _ in
                     if chooseOutputFolder() { startProcessing() }
                 }
             )
@@ -302,6 +304,14 @@ struct ContentView: View {
             pipeline.remove(selection)
             selection.removeAll()
         }
+        .onChange(of: statusFilter) {
+            // The table shows visibleFiles, but a selection made under one
+            // filter survives the switch to another. Delete and the context
+            // menu then act on rows that are no longer on screen: select all
+            // under "All", switch to "Failed", press Delete, and the whole
+            // queue goes instead of the three failures in front of you.
+            selection.formIntersection(Set(visibleFiles.map(\.id)))
+        }
     }
 
     /// Right-click on a row.
@@ -407,9 +417,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            SettingsLink {
-                Text("Open Settings…")
-            }
+            SettingsButton(title: "Open Settings…", tab: .converter)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -615,7 +623,19 @@ struct ContentView: View {
         panel.message = "Choose RAW files or folders"
         panel.prompt = "Add"
         guard panel.runModal() == .OK else { return }
-        await pipeline.add(panel.urls)
+        await addURLs(panel.urls)
+    }
+
+    /// Adds files and makes sure the user can see them.
+    ///
+    /// New files arrive pending, and no outcome filter matches pending, so
+    /// dropping 200 RAWs onto a list filtered to "Failed" used to look like
+    /// the drop had done nothing at all — with no filter option that would
+    /// have revealed them.
+    @MainActor
+    private func addURLs(_ urls: [URL]) async {
+        await pipeline.add(urls)
+        statusFilter = .all
     }
 
     /// Returns true when the user actually picked a folder, so the in-place

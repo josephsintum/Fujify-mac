@@ -77,8 +77,19 @@ final class Pipeline {
         self.notifyOnFinish = defaults.object(forKey: Self.notifyKey) as? Bool ?? true
         self.revealOnFinish = defaults.bool(forKey: Self.revealKey)
 
+        // A saved folder on a volume that is no longer mounted would be
+        // restored as if it were fine, and then fail every single file in
+        // the batch at the write step. Falling back to in place surfaces it
+        // in the toolbar before a batch starts rather than 2,000 failures
+        // later.
         let savedFolder = defaults.string(forKey: Self.defaultOutputFolderKey)
             .map { URL(fileURLWithPath: $0) }
+            .flatMap { url -> URL? in
+                var isDirectory: ObjCBool = false
+                let exists = FileManager.default.fileExists(
+                    atPath: url.path, isDirectory: &isDirectory)
+                return exists && isDirectory.boolValue ? url : nil
+            }
         self.defaultOutputFolder = savedFolder
         self.outputFolder = savedFolder
     }
@@ -274,10 +285,14 @@ final class Pipeline {
                 await self.processOne(item, target: target, converter: resolved, exif: exif)
             }
             guard let self else { return }
+            let wasCancelled = Task.isCancelled
             self.isProcessing = false
             self.batchFinishedAt = Date()
             self.currentTask = nil
-            self.announceBatchFinished()
+            // Stopping is not finishing. Announcing a cancelled batch meant
+            // a "Fujify finished · 412 done" notification and a Finder window
+            // for a run the user had just called off.
+            if !wasCancelled { self.announceBatchFinished() }
         }
     }
 

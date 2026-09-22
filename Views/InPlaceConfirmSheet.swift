@@ -13,10 +13,17 @@ import SwiftUI
 struct InPlaceConfirmSheet: View {
     let dngCount: Int
     let rawCount: Int
-    @Binding var suppressFutureAsks: Bool
 
-    let onUpdateInPlace: () -> Void
-    let onChooseFolder: () -> Void
+    /// Passed the state of "Don't ask again" so the caller can persist it.
+    /// It is reported only by the buttons that go on to run the batch:
+    /// the checkbox is local state, so dismissing with Cancel changes
+    /// nothing. Ticking it and then backing out used to switch the
+    /// confirmation off for good, which is the one outcome this sheet
+    /// exists to prevent.
+    let onUpdateInPlace: (_ suppressFutureAsks: Bool) -> Void
+    let onChooseFolder: (_ suppressFutureAsks: Bool) -> Void
+
+    @State private var suppressFutureAsks = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -43,7 +50,7 @@ struct InPlaceConfirmSheet: View {
             VStack(spacing: 8) {
                 Button("Update in Place") {
                     dismiss()
-                    onUpdateInPlace()
+                    onUpdateInPlace(suppressFutureAsks)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
@@ -51,7 +58,7 @@ struct InPlaceConfirmSheet: View {
 
                 Button("Choose Folder…") {
                     dismiss()
-                    onChooseFolder()
+                    onChooseFolder(suppressFutureAsks)
                 }
                 .frame(maxWidth: .infinity)
 

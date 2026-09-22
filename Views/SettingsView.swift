@@ -7,25 +7,26 @@ import SwiftUI
 struct SettingsView: View {
     /// Lets the converter banner and the Inspector's "Set Up Converter…"
     /// open this window on the right tab.
-    @SceneStorage("settingsTab") private var selectedTab: Tab = .general
-
-    enum Tab: String {
-        case general, cameras, converter
-    }
+    ///
+    /// @AppStorage rather than @SceneStorage: scene storage is private to
+    /// the window that declares it, so nothing outside this view could ever
+    /// write it and the promise above was not kept — "Set Up Converter…"
+    /// landed on General, which has no converter controls.
+    @AppStorage(SettingsTab.storageKey) private var selectedTab: SettingsTab = .general
 
     var body: some View {
         TabView(selection: $selectedTab) {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
-                .tag(Tab.general)
+                .tag(SettingsTab.general)
 
             CamerasSettings()
                 .tabItem { Label("Cameras", systemImage: "camera") }
-                .tag(Tab.cameras)
+                .tag(SettingsTab.cameras)
 
             ConverterSettings()
                 .tabItem { Label("Converter", systemImage: "arrow.left.arrow.right") }
-                .tag(Tab.converter)
+                .tag(SettingsTab.converter)
         }
         .frame(width: 560, height: 480)
     }
