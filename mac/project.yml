@@ -28,7 +28,9 @@ targets:
       - path: Vendor/dnglab
         buildPhase: resources
         optional: true
-      - path: Vendor/exiftool-fujify.config
+      # Shared with the Windows and web implementations; see
+      # docs/PIPELINE-CONTRACT.md §3.2. Lives outside mac/ deliberately.
+      - path: ../tools/exiftool-fujify.config
       - path: Vendor/LICENSES
         type: folder
     settings:

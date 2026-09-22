@@ -1,8 +1,16 @@
-# Fujify for macOS
+# Fujify
 
-A macOS app that unlocks Fujifilm film simulation profiles in Adobe Lightroom for RAW files from non-Fuji cameras. Native SwiftUI port of the original Windows [Fujify](https://github.com/ip-web/Fujify) by Isidore Paulin.
+Unlocks Fujifilm film simulation profiles in Adobe Lightroom for RAW files from non-Fuji cameras, by rewriting a DNG's camera-identity metadata. Based on the original Windows [Fujify](https://github.com/ip-web/Fujify) by Isidore Paulin.
 
-<img src="Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="128" alt="Fujify icon">
+## Platforms
+
+| Platform | Status |
+|---|---|
+| **macOS** | Built. Native SwiftUI app, in [`mac/`](mac/). |
+| **Web** | In progress. Browser-side DNG patching, in [`web/`](web/). |
+| **Windows** | Not built yet — see [`windows/README.md`](windows/README.md). |
+
+<img src="mac/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="128" alt="Fujify icon">
 
 > Most of this repository was written with the help of [Claude](https://www.anthropic.com/claude) (Anthropic's AI assistant) in an extended pair-programming session: the Swift code, the design docs under [`docs/`](docs/), the build tooling, and this README. The original concept, the metadata trick, and the Windows implementation are entirely [Isidore Paulin's](https://github.com/ip-web) work.
 >
@@ -21,7 +29,7 @@ For each file Fujify:
 
 Import the resulting DNG into Lightroom Classic and the Fuji film simulations appear in the Profile picker, just as if you'd shot the file on a Fuji.
 
-The exact tags, flags and rules are specified in [`docs/PIPELINE-CONTRACT.md`](docs/PIPELINE-CONTRACT.md), which both this app and the planned Windows app implement.
+The exact tags, flags and rules are specified in [`docs/PIPELINE-CONTRACT.md`](docs/PIPELINE-CONTRACT.md), which the macOS, web and Windows apps all implement.
 
 ## Requirements
 
@@ -70,11 +78,13 @@ Select the file and open the Inspector (⌘I). It explains what happened, what t
 
 ## Build from source
 
+One repository holds all three platforms (see [Repository layout](#repository-layout)); each is built from its own directory. For the macOS app:
+
 ```sh
-git clone https://github.com/josephsintum/Fujify-mac.git
-cd Fujify-mac
+git clone https://github.com/josephsintum/Fujify-mac.git fujify
+cd fujify/mac             # the macOS app; the browser app is in ../web
 brew install xcodegen
-tools/fetch-tools.sh      # downloads ExifTool and dnglab into Vendor/
+tools/fetch-tools.sh      # downloads ExifTool and dnglab into mac/Vendor/
 xcodegen generate
 open Fujify.xcodeproj
 ```
@@ -87,23 +97,24 @@ Build and run in Xcode (⌘R). The app is unsandboxed and uses ad-hoc local sign
 
 | Path | What's in it |
 |---|---|
-| `Engine/` | Subprocess wrappers for ExifTool, dnglab and Adobe DNG Converter, plus QuickLook thumbnails and the Lightroom launcher. No SwiftUI imports. |
-| `Models/` | `Pipeline` (batch orchestrator), `FileItem`, `TargetCamera`, `CameraStore`, and the structured failure types. `@Observable @MainActor`. |
-| `Views/` | The main window, Inspector, Settings tabs and sheets. |
-| `Tests/` | Swift Testing suites covering the contract's rules. |
-| `docs/` | The pipeline contract and the design/planning docs. |
-| `tools/` | Developer scripts: icon rendering, fixture and tool fetching, output verification. |
-| `Vendor/` | Bundled ExifTool and dnglab (gitignored) plus their licences. |
+| `mac/` | The macOS app (SwiftUI). `Engine/`, `Models/`, `Views/`, `Tests/`, and the bundled tools in `Vendor/`. |
+| `web/` | The browser app (Svelte + TypeScript). DNG-only; patches files locally, nothing is uploaded. |
+| `windows/` | Not built yet — see its README. |
+| `docs/` | `PIPELINE-CONTRACT.md`, the normative spec all three implementations follow, plus design and planning docs. |
+| `fixtures/` | Sample RAW/DNG files, fetched by `tools/fetch-fixtures.sh`. Gitignored. |
+| `tools/` | Shared, platform-neutral: `verify-dng.sh` (the golden test), `fetch-fixtures.sh`, `exiftool-fujify.config`. |
 
-The Xcode project is regenerated from `project.yml` by [xcodegen](https://github.com/yonaskolb/XcodeGen) — `Fujify.xcodeproj` is gitignored. To add a Swift file, drop it in the relevant folder and re-run `xcodegen generate`.
+The Xcode project is regenerated from `mac/project.yml` by [xcodegen](https://github.com/yonaskolb/XcodeGen) — `mac/Fujify.xcodeproj` is gitignored. To add a Swift file, drop it in the relevant folder under `mac/` and re-run `xcodegen generate`.
 
 ### Testing against real files
 
+Fixtures are fetched from the repo root, since they're shared with the web and Windows implementations too:
+
 ```sh
-tools/fetch-fixtures.sh              # six CC0 samples from raw.pixls.us
-xcodebuild -scheme Fujify test       # unit tests
-tools/verify-dng.sh out/*.dng        # assert the identity tags on real output
-tools/verify-dng.sh out/*.dng X100VI # ...against a different target
+../tools/fetch-fixtures.sh              # six CC0 samples from raw.pixls.us
+xcodebuild -scheme Fujify test          # unit tests
+../tools/verify-dng.sh out/*.dng        # assert the identity tags on real output
+../tools/verify-dng.sh out/*.dng X100VI # ...against a different target
 ```
 
 The fixture set covers Sony, Canon, Nikon and Fujifilm, a DNG for the in-place path, and a Nikon D1H that dnglab rejects and Adobe DNG Converter handles — which exercises the skip path and the fallback in one 4 MB file.

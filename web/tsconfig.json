@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["vite/client", "node"],
+    /* Without these, svelte-check 4.7's language-service host fails to
+       resolve the `*.svelte` ambient module for plain .ts importers
+       (e.g. main.ts's `import App from './App.svelte'`), reporting
+       "Could not find a declaration file for module './App.svelte'"
+       even though the file is a valid Svelte component. This matches
+       what the current official `npm create vite -- --template svelte-ts`
+       scaffold sets by default. */
+    "allowJs": true,
+    "checkJs": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.svelte", "tests/**/*.ts"]
+}
