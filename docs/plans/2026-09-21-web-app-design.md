@@ -399,6 +399,62 @@ patcher writes, needs the same byte offsets the write path uses, and must agree
 with `xmp.ts` on the `fujify` namespace. Splitting reads between two
 implementations would be worse than either.
 
+### Why not an XML parser for the XMP work — and when to revisit
+
+Asked 2026-09-21, after two real bugs in the regex-based XMP handling:
+
+- Task 4: `firstProfileItem`'s lazy terminator truncated at a nested `/>`, so
+  present `stCamera:*` values read as absent.
+- Task 5: the namespace-declaration check scanned the whole packet instead of
+  the patched element's scope, emitting children under an unbound prefix.
+
+Both are exactly the class of defect a real parser prevents — namespace scoping
+in particular is something a parser does natively and a regex cannot. So the
+question is fair, and the answer is "not yet", for three concrete reasons:
+
+1. **`DOMParser`/`XMLSerializer` are `Window` APIs, absent from
+   `WorkerGlobalScope`.** `dng/` runs in a Worker, so the zero-cost built-in
+   parser is unavailable where it would be needed.
+2. **`fast-xml-parser` (5.11.1) is 65–79 KB minified and has transitive
+   dependencies** (`strnum`, `is-unsafe`), breaching §10's zero-dependency rule
+   for `dng/`.
+3. **An XMP packet is not a plain XML document.** It is
+   `<?xpacket begin?>` + BOM + the `x:xmpmeta` document + whitespace padding +
+   `<?xpacket end='w'?>`. The padding is the entire mechanism behind §4.2's
+   in-place write. Parse-and-reserialise discards the wrapper and the padding and
+   normalises attribute order, quote style and self-closing form. A parser
+   therefore only ever covers the *inner* document; the wrapper and the
+   byte-exact padding stay hand-rolled either way.
+
+**The realistic option is a hybrid:** parse and rebuild the inner `x:xmpmeta`
+with a parser, keep the wrapper and padding as byte work.
+
+**Revisit after the golden test (§7) runs against real Adobe-written DNGs.**
+Both known bugs are now fixed and regression-tested, including a structural
+well-formedness check, so the marginal value of a swap has dropped; what remains
+is unknown-unknowns on real-world packet shapes, and the golden test is what
+would expose those. Deciding then means deciding with evidence, and with a
+safety net for the change.
+
+### The native apps are over-tooled for the write path
+
+The macOS app bundles 18 MB across 229 files (Perl + exiftool). Contract §3
+uses it for four things: writing the five identity tags, reading identity for
+the skip rule and stash, the Inspector dump, and a version check — plus, on
+Windows, embedded-preview extraction for thumbnails.
+
+The web implementation is effectively a proof that the **write** needs none of
+that: two byte-level edits, ~400 lines, no runtime dependency. The same approach
+ports to Swift and C#.
+
+Where exiftool genuinely earns its size is the **Inspector dump** (§3.3, `-j`
+with every tag it knows). No alternative — exiv2, gexiv2, the Rust crates —
+matches its tag coverage, and that is a user-facing feature.
+
+So the honest split, if this is ever revisited: patch natively, and keep
+exiftool only for the dump, where nothing else will do. **Not in scope for the
+web app**, which needs neither.
+
 ### Optional: `@uswriting/exiftool` in CI only
 
 §7 notes that CI cannot build `fixtures/sample.dng` and so cannot run the golden
