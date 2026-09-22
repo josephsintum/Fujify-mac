@@ -11,6 +11,15 @@ export interface SynthOptions {
   xmp?: string | null;
   /** Extra zero bytes after the last value, to exercise odd file lengths. */
   trailingBytes?: number;
+  /**
+   * The value written into IFD0's trailing next-IFD pointer. Defaults to 0 (no
+   * next IFD), matching every existing fixture. Nothing in this codebase follows
+   * the chain, so this need not point at a real IFD — it exists purely so a test
+   * can tell "the patcher carried this value over" apart from "the patcher
+   * silently zeroed it", which a real DNG's IFD1 (thumbnail/sub-image) chain
+   * depends on.
+   */
+  nextIfdOffset?: number;
 }
 
 const TAG_MAKE = 0x010f;
@@ -86,6 +95,6 @@ export function synthDng(opts: SynthOptions = {}): Uint8Array {
       out.set(f.bytes, at);
     }
   });
-  dv.setUint32(ifdOffset + 2 + fields.length * 12, 0, le);
+  dv.setUint32(ifdOffset + 2 + fields.length * 12, opts.nextIfdOffset ?? 0, le);
   return out;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyPlan, isAlreadyTagged, planPatch } from '../../src/dng/patch';
 import { hasStash, readDng } from '../../src/dng/identity';
-import { NotADngError, TAG, readHeader, readIfd0 } from '../../src/dng/tiff';
+import { NotADngError, TAG, readHeader, readIfd0, view } from '../../src/dng/tiff';
 import { synthDng, xmpPacket } from '../helpers/synth';
 
 const XT5 = { make: 'FUJIFILM', model: 'X-T5', uniqueCameraModel: 'Fujifilm X-T5' };
@@ -66,6 +66,27 @@ describe('planPatch — the happy path', () => {
     expect(info.identity.uniqueCameraModel).toBe('Fujifilm X-T5');
     expect(info.profiles.model).toBe('X-T5');
   });
+
+  it('word-aligns the appended value when the source file length is odd', () => {
+    // trailingBytes: 33 makes buf.byteLength odd, exercising Appender's
+    // start + (start & 1) branch: the first appended chunk must land one byte
+    // past EOF (a leading zero gap byte), not at the odd EOF itself.
+    const buf = synthDng({ trailingBytes: 33 });
+    expect(buf.byteLength % 2).toBe(1);
+
+    const plan = planPatch(buf, XT5);
+    expect(plan.append).not.toBeNull(); // UniqueCameraModel always grows 13 -> 14 bytes here
+    expect(plan.outputLength).toBe(buf.byteLength + plan.append!.byteLength);
+
+    const out = applyPlan(buf, plan);
+    expect(readDng(out).identity.uniqueCameraModel).toBe('Fujifilm X-T5');
+
+    const header = readHeader(out);
+    const ifd = readIfd0(out, header);
+    for (const entry of ifd.entries.values()) {
+      if (!entry.inline) expect(entry.dataOffset % 2).toBe(0);
+    }
+  });
 });
 
 describe('planPatch — the append fallback', () => {
@@ -86,11 +107,23 @@ describe('planPatch — the append fallback', () => {
     expect(entry.dataOffset).toBeGreaterThanOrEqual(buf.byteLength);
   });
 
-  it('leaves the appended packet with padding, so a third pass fits in place', () => {
+  it('leaves the appended packet with padding, so a later pass fits it in place', () => {
     const once = patched(synthDng({ xmp: xmpPacket(0) }));
-    const plan = planPatch(once, XT5);
-    expect(plan.append).toBeNull();
-    expect(plan.outputLength).toBe(once.byteLength);
+    const xmpBefore = readIfd0(once, readHeader(once)).entries.get(TAG.XMP)!;
+    const plan = planPatch(once, X100VI);
+    // plan.append is NOT expected to be null here: pass 1 left UniqueCameraModel's
+    // slot tight at exactly 14 bytes ('Fujifilm X-T5\0'), so retargeting to the
+    // 16-byte 'Fujifilm X100VI\0' legitimately appends that string again. The
+    // property under test is the XMP packet specifically: its padding, left over
+    // from the fresh packet appended in pass 1, absorbs this pass's rewrite in
+    // place rather than forcing another ~2 KB packet onto the file.
+    const twice = applyPlan(once, plan);
+    const xmpAfter = readIfd0(twice, readHeader(twice)).entries.get(TAG.XMP)!;
+
+    expect(xmpAfter.dataOffset).toBe(xmpBefore.dataOffset);
+    expect(xmpAfter.byteLength).toBe(xmpBefore.byteLength);
+    expect(plan.append?.byteLength ?? 0).toBeLessThan(32);
+    expect(readDng(twice).profiles.model).toBe('X100VI');
   });
 });
 
@@ -138,6 +171,22 @@ describe('planPatch — adding a missing tag', () => {
     const info = readDng(out);
     expect(info.identity.uniqueCameraModel).toBe('Fujifilm X-T5');
     expect(info.profiles.uniqueCameraModel).toBe('Fujifilm X-T5');
+  });
+
+  it('carries the next-IFD pointer through relocation', () => {
+    // A real DNG's next-IFD pointer is the classic TIFF slot for IFD1 (thumbnail /
+    // sub-image). Relocation must not truncate that chain. The sentinel need not
+    // point at a real IFD — nothing here follows it — it only has to prove the
+    // value was carried over rather than silently zeroed.
+    const sentinel = 0xdeadbeef;
+    const buf = synthDng({ xmp: null, nextIfdOffset: sentinel });
+    const plan = planPatch(buf, XT5);
+    expect(plan.relocatedIfd).toBe(true);
+
+    const out = applyPlan(buf, plan);
+    const header = readHeader(out);
+    const ifd = readIfd0(out, header);
+    expect(view(out).getUint32(ifd.nextIfdPointerOffset, header.littleEndian)).toBe(sentinel);
   });
 });
 

@@ -96,4 +96,18 @@ describe('synthDng', () => {
     expect(decoded[0x0110]).toBe('ILCE-7S');
     expect(decoded[0xc614]).toBe('Sony ILCE-7S');
   });
+
+  it('writes nextIfdOffset into IFD0s trailing four bytes, in both byte orders', () => {
+    const sentinel = 0xdeadbeef;
+
+    const le = synthDng({ nextIfdOffset: sentinel });
+    const dvLe = new DataView(le.buffer);
+    const nLe = dvLe.getUint16(8, true);
+    expect(dvLe.getUint32(8 + 2 + nLe * 12, true)).toBe(sentinel);
+
+    const be = synthDng({ littleEndian: false, nextIfdOffset: sentinel });
+    const dvBe = new DataView(be.buffer);
+    const nBe = dvBe.getUint16(8, false);
+    expect(dvBe.getUint32(8 + 2 + nBe * 12, false)).toBe(sentinel);
+  });
 });
