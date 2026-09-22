@@ -62,7 +62,8 @@ done
 if [ "$clean" -eq 1 ]; then
     rm -rf "$DEST/exiftool" "$DEST/dnglab"
     echo "Removed the fetched tools from $DEST"
-    echo "(exiftool-fujify.config and LICENSES/ are committed and were kept.)"
+    echo "(Vendor/LICENSES/ is committed and was kept. The shared exiftool config"
+    echo " lives in tools/ at the repo root and is not touched by this script.)"
     exit 0
 fi
 

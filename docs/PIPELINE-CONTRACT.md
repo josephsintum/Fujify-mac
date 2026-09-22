@@ -143,6 +143,53 @@ exiftool is a Perl script. On macOS it is run as
 `/usr/bin/perl <script path> <args>`, using the system Perl (5.34 on Sonoma
 and later). On Windows the packaged `exiftool.exe` is run directly.
 
+### 3.5 Web implementation
+
+The browser cannot run exiftool, so `web/src/dng/` writes the same five
+identity values and the same §3.2 stash by patching bytes directly: IFD0 tag
+`0xC614` (`UniqueCameraModel`), and the XMP packet in tag `0x02BC`, which is
+where §3.1's four `CameraProfiles*` values live as a
+`photoshop:CameraProfiles` structure and the stash as the same `XMP-fujify`
+namespace. The values, their spelling, §3.2's keep-the-existing-stash rule
+and §9's skip rule are unchanged; only the writer differs.
+
+**No byte that already exists in the file is ever moved.** A value either
+fits where the old one lived, or it goes at the original EOF and its IFD0
+entry is repointed:
+
+- the XMP packet is rewritten **in place** when the packet's own padding can
+  absorb the new content, which is the normal case — Adobe and exiftool both
+  leave a couple of kilobytes of it;
+- **otherwise** a fresh packet, with fresh padding of its own so the next
+  pass fits in place again, is appended at EOF and tag `0x02BC` is
+  repointed at it;
+- `UniqueCameraModel` is overwritten in its existing slot when the new
+  string is no longer than the old, and is written inside the 12-byte IFD
+  entry when it is four bytes or fewer, as TIFF requires;
+- **IFD0 itself is relocated** — copied to EOF entry for entry, offsets and
+  next-IFD pointer intact, and the header's IFD0 pointer repointed — only
+  when one of the two tags does not exist yet and so needs a new entry.
+
+The plan of edits is checked before it is applied: every edit lies inside
+the original file's length, no two edits overlap, and the output is the
+original plus the appended block and nothing else.
+
+Because the file is never rebuilt, image data offsets survive untouched.
+On `fixtures/sample.dng`, §3.1's exiftool invocation moves
+`IFD0:StripOffsets` from 226378 to 7358864 and `SubIFD1:PreviewImageStart`
+from 357706 to 6037858; the web patcher leaves both exactly where they were.
+That is why SubIFDs, MakerNotes, the embedded previews and Sony's SR2 block
+stay valid without this code understanding any of them.
+
+Output must pass §12 and read back under `exiftool -j` identically to the
+macOS app's output. `web/tests/golden.test.ts` asserts both against a real
+DNG, along with an `exiftool -validate -warning` list identical to the
+input's.
+
+The web app is **DNG-only**. There is no converter in the browser, so §4
+does not apply to it: a non-DNG file is rejected on read rather than
+converted.
+
 ---
 
 ## 4. Converters
@@ -377,7 +424,7 @@ button that would fix it. dnglab, by contrast, says
 `I/O error: Permission denied (os error 13)`.
 
 Both strings are captured verbatim in
-`Tests/FailureClassificationTests.swift`.
+`mac/Tests/FailureClassificationTests.swift`.
 
 Cause detection lives in exactly one function so both platforms and the unit
 tests agree.

@@ -78,11 +78,13 @@ Select the file and open the Inspector (⌘I). It explains what happened, what t
 
 ## Build from source
 
+One repository holds all three platforms (see [Repository layout](#repository-layout)); each is built from its own directory. For the macOS app:
+
 ```sh
-git clone https://github.com/josephsintum/Fujify-mac.git
-cd Fujify-mac/mac
+git clone https://github.com/josephsintum/Fujify-mac.git fujify
+cd fujify/mac             # the macOS app; the browser app is in ../web
 brew install xcodegen
-tools/fetch-tools.sh      # downloads ExifTool and dnglab into Vendor/
+tools/fetch-tools.sh      # downloads ExifTool and dnglab into mac/Vendor/
 xcodegen generate
 open Fujify.xcodeproj
 ```
