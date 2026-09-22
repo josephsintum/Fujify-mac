@@ -1895,7 +1895,7 @@ export function isAlreadyTagged(buf: Uint8Array, target: TargetCamera): boolean 
 cd /Users/josephsintum/code/Fujify/web && npm test
 ```
 
-Expected: every suite green — 20 in `patch.test.ts` and the earlier 49 still passing (7 synth + 13 tiff + 13 identity + 16 xmp). If the relocation offset arithmetic in `planPatch` is off, the `relocates IFD0` test fails on `ifd.offset`; the appended IFD is the last chunk, so its offset is `outputLength - ifdByteLength`.
+Expected: every suite green — 20 in `patch.test.ts` and the earlier 51 still passing (7 synth + 13 tiff + 13 identity + 18 xmp). If the relocation offset arithmetic in `planPatch` is off, the `relocates IFD0` test fails on `ifd.offset`; the appended IFD is the last chunk, so its offset is `outputLength - ifdByteLength`.
 
 - [ ] **Step 5: Add a type check and commit**
 
