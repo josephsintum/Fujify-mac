@@ -7,7 +7,7 @@ import Foundation
 /// needs no shebang fix-up, no execute bit and no install step. See
 /// docs/PIPELINE-CONTRACT.md §3.4.
 ///
-/// `configFile` points at Vendor/exiftool-fujify.config, which defines the
+/// `configFile` points at tools/exiftool-fujify.config, which defines the
 /// XMP-fujify namespace used to remember a file's original camera identity
 /// (§3.2). It is optional: without it the Fuji tags are still written, only
 /// the stash is skipped.

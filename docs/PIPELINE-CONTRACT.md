@@ -1,6 +1,6 @@
 # Fujify pipeline contract
 
-**Status:** normative. Both the macOS app and the Windows app implement this
+**Status:** normative. The macOS, Windows and web apps implement this
 document. Where they differ, the difference is stated here explicitly.
 
 This is the shared core of Fujify. The code that implements it is small
@@ -106,7 +106,7 @@ kept for the user.
 
 The same invocation also records what the file used to be, so a future
 "Remove Fujify tags" action can put it back. This uses a custom XMP
-namespace defined in `Vendor/exiftool-fujify.config`, passed with `-config`
+namespace defined in `tools/exiftool-fujify.config`, passed with `-config`
 on every read and write:
 
 ```

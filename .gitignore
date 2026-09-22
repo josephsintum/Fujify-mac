@@ -364,7 +364,7 @@ FodyWeavers.xsd
 
 ## Xcode / Swift (Mac app)
 # Generated from project.yml via `xcodegen generate` — not committed.
-Fujify.xcodeproj/
+mac/Fujify.xcodeproj/
 
 # Build artifacts
 build/
@@ -398,11 +398,18 @@ Package.resolved
 fixtures/
 
 ## Bundled third-party tools — fetched by tools/fetch-tools.sh, never committed
-Vendor/exiftool/
-Vendor/dnglab
+mac/Vendor/exiftool/
+mac/Vendor/dnglab
 
 ## Generated icon exports
 build/
 
 ## Subagent-driven development scratch — ledgers, briefs, review packages
 .superpowers/
+
+## Web app
+web/node_modules/
+web/dist/
+web/.vite/
+web/test-results/
+web/playwright-report/
