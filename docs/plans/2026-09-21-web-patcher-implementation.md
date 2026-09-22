@@ -767,7 +767,7 @@ export function readAscii(buf: Uint8Array, entry: IfdEntry | undefined): string 
 cd /Users/josephsintum/code/Fujify/web && npm test -- tests/dng/tiff.test.ts
 ```
 
-Expected: 14 passed.
+Expected: 13 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -1880,7 +1880,7 @@ export function isAlreadyTagged(buf: Uint8Array, target: TargetCamera): boolean 
 cd /Users/josephsintum/code/Fujify/web && npm test
 ```
 
-Expected: every suite green — 20 in `patch.test.ts` and the earlier 35 still passing. If the relocation offset arithmetic in `planPatch` is off, the `relocates IFD0` test fails on `ifd.offset`; the appended IFD is the last chunk, so its offset is `outputLength - ifdByteLength`.
+Expected: every suite green — 20 in `patch.test.ts` and the earlier 48 still passing (7 synth + 13 tiff + 12 identity + 16 xmp). If the relocation offset arithmetic in `planPatch` is off, the `relocates IFD0` test fails on `ifd.offset`; the appended IFD is the last chunk, so its offset is `outputLength - ifdByteLength`.
 
 - [ ] **Step 5: Add a type check and commit**
 
